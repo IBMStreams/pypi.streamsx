@@ -1,6 +1,6 @@
 <project name="pypi.streamsx" default="all" >
     <description>
-        Build the Streams Java functional api.
+        Build the IBM Streams streamsx Python package.
     </description>
   
   <property name="streamsx.py" location="../streamsx"/>
