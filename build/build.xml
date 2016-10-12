@@ -1,0 +1,23 @@
+<project name="pypi.streamsx" default="all" >
+    <description>
+        Build the IBM Streams streamsx Python package.
+    </description>
+  
+  <property name="streamsx.py" location="../streamsx"/>
+
+  <target name="all">
+   <delete dir="${streamsx.py}"/>
+   <mkdir dir="${streamsx.py}"/>
+   <exec executable="git">
+      <arg value="clone"/>
+      <arg value="https://github.com/IBMStreams/streamsx.utility.git"/>
+   </exec>
+    <copy file="streamsx.utility/python/packages/streamsx/rest.py"
+      todir="${streamsx.py}"/>
+   <delete dir="streamsx.utility"/>
+  </target>
+
+  <target name="clean" >
+    <delete dir="${streamsx.py}"/>
+  </target>
+</project>
