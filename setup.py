@@ -2,12 +2,12 @@ from setuptools import setup
 setup(
   name = 'streamsx',
   packages = ['streamsx'],
-  version = '0.2.1',
+  version = '0.3.0',
   description = 'IBM Streams Python Support',
   author = 'IBM Streams @ github.com',
   author_email = 'debrunne@us.ibm.com',
   url = 'https://github.com/IBMStreams/pypi.streamsx',
-  download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/0.2.1',
+  download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/0.3.0',
   keywords = ['streams', 'ibmstreams', 'streaming'],
   classifiers = [
     'Development Status :: 3 - Alpha',

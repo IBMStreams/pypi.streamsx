@@ -8,6 +8,7 @@
   <target name="all">
    <delete dir="${streamsx.py}"/>
    <mkdir dir="${streamsx.py}"/>
+   <!--
    <exec executable="git">
       <arg value="clone"/>
       <arg value="https://github.com/IBMStreams/streamsx.utility.git"/>
@@ -15,6 +16,20 @@
     <copy file="streamsx.utility/python/packages/streamsx/rest.py"
       todir="${streamsx.py}"/>
    <delete dir="streamsx.utility"/>
+   -->
+
+   <delete dir="${streamsx.py}/.toolkit"/>
+   <mkdir dir="${streamsx.py}/.toolkit"/>
+   <copy todir="${streamsx.py}/.toolkit">
+       <fileset dir="/home/streamsadmin/topology/byname/streamsx.topology"
+         includes="com.ibm.streamsx.topology/**"
+         excludes="**/__pycache__/** **/*.pyc *.pyc"
+         />
+   </copy>
+   <move toDir="${streamsx.py}">
+       <fileset dir="${streamsx.py}/.toolkit/com.ibm.streamsx.topology/opt/python/packages/streamsx"
+          excludes="**/__pycache__/** **/*.pyc *.pyc"/>
+   </move>
   </target>
 
   <target name="clean" >
