@@ -17,6 +17,10 @@ Upload to test PyPi
 
 1. `python setup.py sdist upload -r pypitest`
 
+You can test by installing using
+
+1. `pip install --upgrade -i https://testpypi.python.org/pypi streamsx`
+
 Then upload to production Py Pi
 
 1. `python setup.py sdist upload -r pypi`
