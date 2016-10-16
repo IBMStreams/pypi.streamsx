@@ -29,9 +29,12 @@ sub main::generate($$) {
     # handle conversion of spl tuples to/from Python
    
     my $tkdir = $model->getContext()->getToolkitDirectory();
-    my $pydir = $tkdir."/opt/python";
+    my $cmndir = $tkdir."/opt/python/templates/common";
+    my $fpdir = $tkdir."/com.ibm.streamsx.topology.functional.python";
    
-    require $pydir."/codegen/splpy.pm";
+    require $fpdir."/pyfunction.pm";
+    require $fpdir."/pyspltuple.pm";
+    require $cmndir."/splpy_python.pm";
    
     # setup the variables used when processing spltuples
     my $pyport = $model->getInputPortAt(0);
@@ -183,7 +186,7 @@ sub main::generate($$) {
    print '  streamsx::topology::PyGILLock lockdict;', "\n";
    print '  PyObject * pyDict = PyDict_New();', "\n";
         for (my $i = 0; $i < $pynumattrs; ++$i) {
-            print convertAndAddToPythonDictionaryObject("ip", $i, $pyatypes[$i], $pyanames[$i], 'pyInNames_');
+            print convertAndAddToPythonDictionaryObject("ip", $i, $pyatypes[$i], $pyanames[$i]);
         }
    print "\n";
    print '  value = pyDict;', "\n";

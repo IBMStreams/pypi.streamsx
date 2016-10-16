@@ -1,5 +1,3 @@
-# Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2016
 import os
 import pickle
 import base64
@@ -26,9 +24,6 @@ def pickleReturn(function) :
 # Given a callable 'callable', return a function
 # that depickles the input and then calls 'callable'
 # returning the callable's return
-# The returned function must not maintain a reference
-# to the passed in value as it will be a memory view
-# object with memory that will become invalid after the call.
 def pickle_in(callable) :
     ac = _getCallable(callable)
     def _wf(v):
@@ -54,7 +49,7 @@ def string_in(callable) :
 # Given a callable 'callable', return a function
 # that calls 'callable' with a python dictionary object 
 # form of an spltuple returning the callable's return
-def dict_in(callable) :
+def spltupleDict_in(callable) :
     ac = _getCallable(callable)
     def _wf(v):
         return ac(v)
@@ -124,9 +119,6 @@ def _getCallable(f):
 ## {pickle,json,string} -> {pickle}
 ##
 
-# The returned function must not maintain a reference
-# to the passed in value as it will be a memory view
-# object with memory that will become invalid after the call.
 def pickle_in__pickle_out(callable):
     ac = _getCallable(callable)
     def _wf(v):
@@ -148,7 +140,7 @@ def json_in__pickle_out(callable):
 def string_in__pickle_out(callable):
     return object_in__pickle_out(callable)
 
-def dict_in__pickle_out(callable):
+def spltupleDict_in__pickle_out(callable):
     return object_in__pickle_out(callable)
 
 def dict_in__pickle_out(callable):
@@ -169,9 +161,6 @@ def object_in__pickle_out(callable):
 ##  {pickle} ->  {json,string}
 ##
 
-# The returned function must not maintain a reference
-# to the passed in value as it will be a memory view
-# object with memory that will become invalid after the call.
 def pickle_in__json_out(callable):
     ac = _getCallable(callable)
     def _wf(v):
@@ -221,10 +210,6 @@ class _PickleIterator:
        while nv is None:
           nv = next(self.it)
        return pickle.dumps(nv)
-# python 2.7 uses the next function whereas 
-# python 3.x uses __next__ 
-   def next(self):
-       return self.__next__()
 
 # Return a function that depickles
 # the input tuple calls callable
@@ -235,10 +220,6 @@ class _PickleIterator:
 # an instance of _PickleIterator
 # wrapping an iterator from the iterable
 # Used by PyFunctionMultiTransform
-
-# The returned function must not maintain a reference
-# to the passed in value as it will be a memory view
-# object with memory that will become invalid after the call.
 def pickle_in__pickle_iter(callable):
     ac =_getCallable(callable)
     def _wf(v):
@@ -266,7 +247,7 @@ def string_in__pickle_iter(callable):
         return _PickleIterator(irv)
     return _wf
 
-def dict_in__pickle_iter(callable):
+def spltupleDict_in__pickle_iter(callable):
     ac =_getCallable(callable)
     def _wf(v):
         irv = ac(v)

@@ -29,9 +29,12 @@ sub main::generate($$) {
     # handle conversion of spl tuples to/from Python
    
     my $tkdir = $model->getContext()->getToolkitDirectory();
-    my $pydir = $tkdir."/opt/python";
+    my $cmndir = $tkdir."/opt/python/templates/common";
+    my $fpdir = $tkdir."/com.ibm.streamsx.topology.functional.python";
    
-    require $pydir."/codegen/splpy.pm";
+    require $fpdir."/pyfunction.pm";
+    require $fpdir."/pyspltuple.pm";
+    require $cmndir."/splpy_python.pm";
    
     # setup the variables used when processing spltuples
     my $pyport = $model->getInputPortAt(0);
@@ -52,9 +55,7 @@ sub main::generate($$) {
    print "\n";
    print "\n";
    print '// Constructor', "\n";
-   print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
-   print '   function_(NULL),', "\n";
-   print '   pyInNames_(NULL)', "\n";
+   print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() : function_(NULL)', "\n";
    print '{', "\n";
    print '  std::string tkDir = ProcessingElement::pe().getToolkitDirectory();', "\n";
    print '  std::string streamsxDir = tkDir + "/opt/python/packages/streamsx/topology";', "\n";
@@ -136,23 +137,18 @@ sub main::generate($$) {
    print '      streamsx::topology::Splpy::flush_PyErr_Print();', "\n";
    print '      throw;', "\n";
    print '    }', "\n";
-   print "\n";
-    if ($pystyle eq 'dict') { 
-   print "\n";
-   print '     pyInNames_ = streamsx::topology::Splpy::pyAttributeNames(', "\n";
-   print '               getInputPortAt(0));', "\n";
-    } 
-   print "\n";
    print '}', "\n";
    print "\n";
    print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
-   print '  streamsx::topology::PyGILLock lock;', "\n";
-   print '  if (function_)', "\n";
-   print '    Py_DECREF(function_);', "\n";
-   print '  if (pyInNames_)', "\n";
-   print '    Py_DECREF(pyInNames_);', "\n";
+   print '    // Finalization code goes here', "\n";
+   print '    if (function_) {', "\n";
+   print '      streamsx::topology::PyGILLock lock;', "\n";
+   print '      if (function_) {', "\n";
+   print '        Py_DECREF(function_);', "\n";
+   print '      }', "\n";
+   print '    }', "\n";
    print '}', "\n";
    print "\n";
    print '// Notify port readiness', "\n";
@@ -195,7 +191,7 @@ sub main::generate($$) {
    print '  streamsx::topology::PyGILLock lockdict;', "\n";
    print '  PyObject * pyDict = PyDict_New();', "\n";
         for (my $i = 0; $i < $pynumattrs; ++$i) {
-            print convertAndAddToPythonDictionaryObject("ip", $i, $pyatypes[$i], $pyanames[$i], 'pyInNames_');
+            print convertAndAddToPythonDictionaryObject("ip", $i, $pyatypes[$i], $pyanames[$i]);
         }
    print "\n";
    print '  value = pyDict;', "\n";

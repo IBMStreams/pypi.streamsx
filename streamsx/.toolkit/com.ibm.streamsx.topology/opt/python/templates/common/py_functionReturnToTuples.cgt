@@ -2,12 +2,9 @@
    // converts the returned value into
    // Tuples and submits them.
 
-    PyObject * pyReturnVar = PyObject_Call(function_, pyTuple, pyDict);
+    PyObject * pyReturnVar = PyObject_CallObject(function_, pyTuple);
 
     Py_DECREF(pyTuple);
-    if (pyDict != NULL)
-        Py_DECREF(pyDict);
-
     if (pyReturnVar == NULL) {
         SPLAPPLOG(L_ERROR, "Fatal error: function failed: " << "<%=$functionName%>", "python");
        
@@ -161,12 +158,12 @@ if(PyTuple_Check(pyReturnVar)){
     %>
     if (<%=$ai%> < frs) {
          // Value from the Python function
-         // Can use GET_ITEM as we have checked the index
-         PyObject *pyAttrValue = PyTuple_GET_ITEM(tuple, <%=$ai%>);
+         PyObject *pyAttrValue = PyTuple_GetItem(tuple, <%=$ai%>);
          <%
 
          # TODO: do error checking for the conversions. E.g., 
          # char * str = PyUnicode_AsUTF8(pyAttrValue)
+         # if(str==NULL) exit(0);
 
 	 my $ce = "__ERROR__";
 	     if ($atype eq 'list') {

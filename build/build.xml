@@ -1,35 +1,51 @@
-<project name="pypi.streamsx" default="all" >
+<project name="pypi.streamsx" default="get_artifacts" >
     <description>
         Build the IBM Streams streamsx Python package.
     </description>
   
   <property name="streamsx.py" location="../streamsx"/>
 
-  <target name="all">
+  <target name="get_artifacts">
+  <!-- Clean out the streamsx folder -->
+   <exec executable="git">
+      <arg value="rm"/>
+      <arg value="-r"/>
+      <arg value="-f"/>
+      <arg value="${streamsx.py}"/>
+   </exec>
    <delete dir="${streamsx.py}"/>
    <mkdir dir="${streamsx.py}"/>
+
    <!--
-   <exec executable="git">
-      <arg value="clone"/>
-      <arg value="https://github.com/IBMStreams/streamsx.utility.git"/>
-   </exec>
-    <copy file="streamsx.utility/python/packages/streamsx/rest.py"
-      todir="${streamsx.py}"/>
-   <delete dir="streamsx.utility"/>
+       Download a topology release and unpack it into streamsx
    -->
+
+   <delete dir="release"/>
+   <delete file="release.tgz"/>
+   <mkdir dir="release"/>
+
+   <get src="https://github.com/IBMStreams/streamsx.topology/releases/download/v1.4.3/streamsx.topology-v1.4-20160815-1122.tgz" dest="release.tgz"/>
+   <untar src="release.tgz" dest="release" compression="gzip"/>
 
    <delete dir="${streamsx.py}/.toolkit"/>
    <mkdir dir="${streamsx.py}/.toolkit"/>
    <copy todir="${streamsx.py}/.toolkit">
-       <fileset dir="/home/streamsadmin/topology/byname/streamsx.topology"
+       <fileset dir="release"
          includes="com.ibm.streamsx.topology/**"
          excludes="**/__pycache__/** **/*.pyc *.pyc"
          />
    </copy>
+   <delete dir="release"/>
+   <delete file="release.tgz"/>
    <move toDir="${streamsx.py}">
        <fileset dir="${streamsx.py}/.toolkit/com.ibm.streamsx.topology/opt/python/packages/streamsx"
           excludes="**/__pycache__/** **/*.pyc *.pyc"/>
    </move>
+
+   <exec executable="git">
+      <arg value="add"/>
+      <arg value="${streamsx.py}"/>
+   </exec>
   </target>
 
   <target name="clean" >

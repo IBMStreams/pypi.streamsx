@@ -47,9 +47,6 @@ sub main::generate($$) {
    print '  // Python nested function that depickles the input value', "\n";
    print '  // and calls the application function', "\n";
    print '  PyObject *function_;', "\n";
-   print '    ', "\n";
-   print '  // Names of input attributes', "\n";
-   print '  PyObject *pyInNames_;', "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);

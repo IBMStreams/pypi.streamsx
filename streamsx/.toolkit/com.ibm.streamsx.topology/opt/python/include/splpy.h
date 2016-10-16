@@ -20,66 +20,15 @@
 #include <memory>
 #include <dlfcn.h>
 
-#include <SPL/Runtime/Type/Meta/BaseType.h>
-#include <SPL/Runtime/ProcessingElement/PE.h>
-#include <SPL/Runtime/Operator/Port/OperatorPort.h>
-#include <SPL/Runtime/Operator/Port/OperatorInputPort.h>
-#include <SPL/Runtime/Operator/Port/OperatorOutputPort.h>
-#include <SPL/Runtime/Operator/OperatorContext.h>
 #include <SPL/Runtime/Operator/Operator.h>
-
-#ifndef __SPL__SPLPY_H
-#define __SPL__SPLPY_H
+#include <SPL/Runtime/Operator/OperatorContext.h>
+#include <SPL/Runtime/ProcessingElement/PE.h>
 
 /**
  * Functionality for executing Python within IBM Streams.
  */
 
-#if PY_MAJOR_VERSION == 3
-#define TOPOLOGY_PYTHON_LIBNAME "libpython3.5m.so"
-#else
-#define TOPOLOGY_PYTHON_LIBNAME "libpython2.7.so"
-#endif
     
-#define GET_PYTHON_VALUE_THROWIFERROR(pbytes)                            \
-do {                                                                     \
-      if (pbytes == 0) {                                                 \
-         SPLAPPTRC(L_ERROR, "Python can't convert to UTF-8!", "python"); \
-         throw;                                                          \
-      }                                                                  \
-   }                                                                     \
-while(0) 
-
-#if PY_MAJOR_VERSION == 3
-#define GET_PYTHON_VALUE_AS_UTF8_AND_ASSIGN(pvalue,pattr)                \
-do {                                                                     \
-      Py_ssize_t size = 0;                                               \
-      char * bytes = PyUnicode_AsUTF8AndSize(pvalue, &size);             \
-      GET_PYTHON_VALUE_THROWIFERROR(bytes);                              \
-      pattr.assign((const char *)bytes, (size_t) size);                  \
-   }                                                                     \
-while(0) 
-#else
-#define GET_PYTHON_VALUE_AS_UTF8_AND_ASSIGN(pvalue,pattr)                \
-do {                                                                     \
-      Py_ssize_t size = 0;                                               \
-      PyObject *utf8String = PyUnicode_AsUTF8String(pvalue);             \
-      char *bytes = PyString_AsString(utf8String);                       \
-      GET_PYTHON_VALUE_THROWIFERROR(bytes);                              \
-      pattr.assign((const char *)bytes, strlen((const char *)bytes));    \
-      Py_DECREF(utf8String);                                             \
-   }                                                                     \
-while(0) 
-#endif
-
-#if PY_MAJOR_VERSION == 3
-#define GET_PYTHON_ATTR_FROM_MEMORY(pbytes,psizeb)                       \
-     PyMemoryView_FromMemory((char *) pbytes, psizeb, PyBUF_READ);
-#else
-#define GET_PYTHON_ATTR_FROM_MEMORY(pbytes,psizeb)                       \
-     PyBuffer_FromMemory((void *)bytes, sizeb);
-#endif
-
 namespace streamsx {
   namespace topology {
 
@@ -116,7 +65,13 @@ namespace streamsx {
     ** Convert to a SPL rstring from a Python string object.
     */
     inline void pyAttributeFromPyObject(SPL::rstring & attr, PyObject * value) {
-      GET_PYTHON_VALUE_AS_UTF8_AND_ASSIGN(value,attr);
+      Py_ssize_t size = 0;
+      char * bytes = PyUnicode_AsUTF8AndSize(value, &size);          
+      if (bytes == 0) {
+         SPLAPPTRC(L_ERROR, "Python can't convert to UTF-8!", "python");
+         throw;
+      }
+      attr.assign((const char *)bytes, (size_t) size);
     }
 
     /**************************************************************/
@@ -127,13 +82,13 @@ namespace streamsx {
 
 
     /**
-     * Convert a SPL blob into a Python Memory view object.
+     * Convert a SPL blob into a Python Byte string 
      */
     inline PyObject * pyAttributeToPyObject(const SPL::blob & attr) {
       long int sizeb = attr.getSize();
       const unsigned char * bytes = attr.getData();
 
-      return GET_PYTHON_ATTR_FROM_MEMORY(bytes, sizeb);
+      return PyBytes_FromStringAndSize((const char *)bytes, sizeb);
     }
 
     /**
@@ -219,8 +174,8 @@ namespace streamsx {
 	      SPLAPPLOG(L_INFO, "LD_LIBRARY_PATH not set", "python");
         }
 
-        // declare pylib and its value  
-        std::string pyLib(TOPOLOGY_PYTHON_LIBNAME);
+
+        std::string pyLib("libpython3.5m.so");
         char * pyHome = getenv("PYTHONHOME");
         if (pyHome != NULL) {
             std::string wk(pyHome);
@@ -442,27 +397,8 @@ namespace streamsx {
       return pyReturnVar;
     }
 
-    /**
-     *  Return a Python tuple containing the attribute
-     *  names for a port in order.
-     */
-    static PyObject * pyAttributeNames(SPL::OperatorPort & port) {
-       SPL::Meta::TupleType const & tt = 
-           dynamic_cast<SPL::Meta::TupleType const &>(port.getTupleType());
-       uint32_t ac = tt.getNumberOfAttributes();
-       PyObject * pyNames = PyTuple_New(ac);
-       for (uint32_t i = 0; i < ac; i++) {
-            std::string const & name = tt.getAttributeName(i);
-
-            PyObject * pyName = PyUnicode_DecodeUTF8(
-                           name.c_str(), name.size(), NULL);
-            PyTuple_SetItem(pyNames, i, pyName);
-       }
-       return pyNames;
-    }
 
     };
    
   }
 }
-#endif
