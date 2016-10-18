@@ -22,7 +22,7 @@
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">Toolkits</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.topology.html">com.ibm.streamsx.topology 1.4.3</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python.html">com.ibm.streamsx.topology.python</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python$1.html">Python Application API</a> &gt; Python Application API functions </p>
+<a class="xref" href="../toolkits/toolkits.html">Toolkits</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.topology.html">com.ibm.streamsx.topology 1.5.0.__dev__</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python.html">com.ibm.streamsx.topology.python</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python$1.html">Python Application API</a> &gt; Python Application API functions </p>
 
 </div>
 
@@ -261,6 +261,20 @@ map : dictionary
 </p>
 
 <p class="p">  return: None
+</p>
+</li>
+
+<li class="li">
+<p class="p"> <tt class="ph tt">autonomous(self)</tt> function on <tt class="ph tt">Stream</tt>   Starts an autonomous region for downstream processing.   By default IBM Streams processing is executed in an autonomous region   where any checkpointing of operator state is autonomous (independent)   of other operators.
+</p>
+
+<p class="p">  This function may be used to end a consistent region by starting an   autonomous region. This may be called even if this stream is in   an autonomous region.
+</p>
+
+<p class="p">  Autonomous is not applicable when a topology is submitted   to a STANDALONE contexts and will be ignored.
+</p>
+
+<p class="p">  Supported since v1.5
 </p>
 </li>
 

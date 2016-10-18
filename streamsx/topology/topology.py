@@ -1,3 +1,15 @@
+from __future__ import unicode_literals
+from __future__ import print_function
+from __future__ import division
+from __future__ import absolute_import
+from builtins import super
+from builtins import range
+try:
+  from future import standard_library
+  standard_library.install_aliases()
+except (ImportError,NameError):
+  # nothing to do here
+  pass 
 # Licensed Materials - Property of IBM
 # Copyright IBM Corp. 2015
 
@@ -8,7 +20,10 @@ import streamsx.topology.functions
 import json
 import threading
 import queue
+import sys
 import time
+import inspect
+from platform import python_version
 from enum import Enum
 
 
@@ -16,6 +31,13 @@ class Topology(object):
     """Topology that contains graph + operators"""
     def __init__(self, name, files=None):
         self.name = name
+        self.pythonversion = python_version()
+        if sys.version_info.major == 3 and sys.version_info.minor == 5:
+          self.opnamespace = "com.ibm.streamsx.topology.functional.python"
+        elif sys.version_info.major == 2 and sys.version_info.minor == 7:
+          self.opnamespace = "com.ibm.streamsx.topology.functional.python2"
+        else:
+          raise ValueError("Python version not supported.")
         self.graph = graph.SPLGraph(name)
         if files is not None:
             self.files = files
@@ -25,12 +47,13 @@ class Topology(object):
     def source(self, func):
         """
         Fetches information from an external system and presents that information as a stream.
-        Takes a zero-argument callable that returns an iterable of tuples.
+        Tuples are obtained from an iterator obtained from the passed iterable
+        or callable that returns an iterable.
         Each tuple that is not None from the iterator returned
         from iter(func()) is present on the returned stream.
         
         Args:
-            func: A zero-argument callable that returns an iterable of tuples.
+            func: An iterable or a zero-argument callable that returns an iterable of tuples.
             The callable must be either 
             * the name of a function defined at the top level of a module that takes no arguments, or
             * an instance of a callable class defined at the top level of a module that implements
@@ -39,9 +62,16 @@ class Topology(object):
             initialization and utilized when the instance is called.
             A tuple is represented as a Python object that must be picklable.
         Returns:
-            A Stream whose tuples are the result of the output obtained by invoking the provided callable.
+            A Stream whose tuples are the result of the output obtained by invoking the provided callable or iterable.
         """
-        op = self.graph.addOperator("com.ibm.streamsx.topology.functional.python::PyFunctionSource", func)
+        if inspect.isroutine(func):
+             pass
+        elif callable(func):
+             pass
+        else:
+             func = streamsx.topology.functions._IterableInstance(func)
+        
+        op = self.graph.addOperator(self.opnamespace+"::PyFunctionSource", func)
         oport = op.addOutputPort()
         return Stream(self, oport)
 
@@ -103,7 +133,7 @@ class Stream(object):
         Returns:
             None
         """
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.functional.python::PyFunctionSink", func)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionSink", func)
         op.addInputPort(outputPort=self.oport)
 
     def filter(self, func):
@@ -127,24 +157,26 @@ class Stream(object):
         Returns:
             A Stream containing tuples that have not been filtered out.
         """
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.functional.python::PyFunctionFilter", func)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionFilter", func)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
         return Stream(self.topology, oport)
 
     def _map(self, func, schema):
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.functional.python::PyFunctionTransform", func)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionTransform", func)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=schema)
         return Stream(self.topology, oport)
 
-    def view(self, buffer_time = 10.0, sample_size = 10000):
+    def view(self, buffer_time = 10.0, sample_size = 10000, name=None):
         """
         Defines a view on a stream. Returns a view object which can be used to access the data
         :param buffer_time The window of time over which tuples will be
+        :param name Name of the view. Name must be unique within the topology. Defaults to a generated name.
         """
         new_op = self._map(streamsx.topology.functions.identity,schema=schema.CommonSchema.Json)
-        name = ''.join(random.choice('0123456789abcdef') for x in range(16))
+        if name is None:
+            name = ''.join(random.choice('0123456789abcdef') for x in range(16))
 
         port = new_op.oport.name
         new_op.oport.operator.addViewConfig({
@@ -210,7 +242,7 @@ class Stream(object):
         Raises:
             TypeError: if `func` does not return an iterator nor None
         """     
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.functional.python::PyFunctionMultiTransform", func)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionMultiTransform", func)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
@@ -310,7 +342,7 @@ class Stream(object):
         elif(routing == Routing.HASH_PARTITIONED ) :
             if (func is None) :
                 func = hash   
-            op = self.topology.graph.addOperator("com.ibm.streamsx.topology.functional.python::PyFunctionHashAdder",func)           
+            op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionHashAdder", func)
             hash_schema = self.oport.schema.extend(schema.StreamSchema("tuple<int32 __spl_hash>"))
             parentOp = op.addOutputPort(schema=hash_schema)
             op.addInputPort(outputPort=self.oport)
@@ -412,6 +444,32 @@ class Stream(object):
         op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params=publishParams)
         op.addInputPort(outputPort=self.oport)
 
+    def autonomous(self):
+        """
+        Starts an autonomous region for downstream processing.
+        By default IBM Streams processing is executed in an autonomous region
+        where any checkpointing of operator state is autonomous (independent)
+        of other operators.
+        
+        This function may be used to end a consistent region by starting an
+        autonomous region. This may be called even if this stream is in
+        an autonomous region.
+
+        Autonomous is not applicable when a topology is submitted
+        to a STANDALONE contexts and will be ignored.
+
+        Supported since v1.5
+
+        Args:
+            None
+        Returns:
+            Stream
+        """
+        op = self.topology.graph.addOperator("$Autonomous$")
+        op.addInputPort(outputPort=self.oport)
+        oport = op.addOutputPort(schema=self.oport.schema)
+        return Stream(self.topology, oport)
+
 class Routing(Enum):
     ROUND_ROBIN=1
     KEY_PARTITIONED=2
@@ -433,7 +491,7 @@ class View(threading.Thread):
         self.sample_size = sample_size
         self.streams_context = None
         self.view_object = None
-        self.streams_context_config = {'username': '', 'password': '', 'resource_url': ''}
+        self.streams_context_config = {'username': '', 'password': '', 'rest_api_url': ''}
 
         self._last_collection_time = -1
         self.is_rest_initialized = False
@@ -447,7 +505,7 @@ class View(threading.Thread):
             from streamsx import rest
             rc = rest.StreamsContext(self.streams_context_config['username'],
                                      self.streams_context_config['password'],
-                                     self.streams_context_config['resource_url'])
+                                     self.streams_context_config['rest_api_url'])
             self.is_rest_initialized = True
             self.set_streams_context(rc)
 

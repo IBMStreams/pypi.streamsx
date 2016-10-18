@@ -7,65 +7,65 @@
 <meta name="copyright" content="(C) Copyright 2005"/>
 <meta name="DC.rights.owner" content="(C) Copyright 2005"/>
 <meta name="DC.Type" content="reference"/>
-<meta name="DC.Title" content="@spl.sink"/>
+<meta name="DC.Title" content="Supported SPL types"/>
 <meta name="DC.Format" content="XHTML"/>
 <meta name="DC.Identifier" content="spldoc_page"/>
 <link rel="stylesheet" type="text/css" href="../../html/commonltr.css"/>
 <link rel="stylesheet" type="text/css" href="../../html/spldoc.css"/>
-<title>@spl.sink</title>
+<title>Supported SPL types</title>
 </head>
 <body id="spldoc_page">
 
 
-<h1 class="title topictitle1">@spl.sink</h1>
+<h1 class="title topictitle1">Supported SPL types</h1>
 
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">Toolkits</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.topology.html">com.ibm.streamsx.topology 1.4.3</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python.html">com.ibm.streamsx.topology.python</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python$6.html">Decorating Python Functions as SPL Operators</a> &gt; @spl.sink</p>
+<a class="xref" href="../toolkits/toolkits.html">Toolkits</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.topology.html">com.ibm.streamsx.topology 1.5.0.__dev__</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python.html">com.ibm.streamsx.topology.python</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.topology.python$6.html">Creating SPL Operators from Python code</a> &gt; Supported SPL types</p>
 
 </div>
 
 
 <div class="section">
-<p class="p">Decorator to create a sink SPL operator. If the Python function is decorated with <tt class="ph tt">@spl.sink</tt> then the operator is a sink operator, with a single input port and no output ports. For each input tuple the function is called.
-</p>
-
-</div>
-
-<div class="section"><h2 class="title sectiontitle">Examples
-</h2>
-
-<p class="p">Operator to send an e-mail for each tuple using the local SMTP server.
+<p class="p">A limited set of SPL types are supported.
 </p>
 
 <div class="p">
-<pre class="pre codeblock">
-import sys
-import smtplib
+<ul class="ul">
+<li class="li"> <strong class="ph b">Primitive types</strong>
+<ul class="ul">
+<li class="li"> <tt class="ph tt">boolean</tt></li>
 
-# Import the SPL decorators
-from streamsx.spl import spl
+<li class="li"> <tt class="ph tt">int8</tt>, <tt class="ph tt">int16</tt>, <tt class="ph tt">int32</tt>, <tt class="ph tt">int64</tt></li>
 
-server = smtplib.SMTP('localhost')
+<li class="li"> <tt class="ph tt">uint8</tt>, <tt class="ph tt">uint16</tt>, <tt class="ph tt">uint32</tt>, <tt class="ph tt">uint64</tt></li>
 
-def splNamespace():
-    return "com.ibm.streamsx.topology.pysamples.mail"
+<li class="li"> <tt class="ph tt">float32</tt>, <tt class="ph tt">float64</tt></li>
 
-# Decorate this function as a sink operator
-# This means the operator will have a single
-# input port and no output ports. The SPL tuple
-# is passed in as described in spl_samples.py.
-# The function must return None, typically by
-# not having any return statement.
-＠spl.sink
-def simplesendmail(from_addr, to_addrs, msg):
-    "Send a simple email"
-    server.sendmail(from_addr, to_addrs, msg)
-</pre>
+<li class="li"> <tt class="ph tt">rstring</tt>, <tt class="ph tt">ustring</tt></li>
 
+</ul>
+</li>
+
+<li class="li"> <strong class="ph b">Collection types</strong>
+<ul class="ul">
+<li class="li"> <tt class="ph tt">list&lt;P&gt;</tt> where <tt class="ph tt">P</tt> is one of the supported primitive types. Passed into Python as a list.</li>
+
+<li class="li"> <tt class="ph tt">map&lt;K,V&gt;</tt> where <tt class="ph tt">K</tt> and <tt class="ph tt">V</tt> are supported primitive types. Passed into Python as a dictionary.</li>
+
+</ul>
+</li>
+
+</ul>
 
 </div>
+
+<p class="p">For an input port all the above types are supported.
+</p>
+
+<p class="p">For an output port only primitive types are supported.
+</p>
 
 </div>
 

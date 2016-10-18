@@ -1,5 +1,7 @@
 #!/bin/sh
+# python3 version
 action=$1
+
 if [ $action = "lib" ]
 then
     python3-config --libs | sed -e 's/^-l//;s/ -l/ /g;s/ \+/\n/g'

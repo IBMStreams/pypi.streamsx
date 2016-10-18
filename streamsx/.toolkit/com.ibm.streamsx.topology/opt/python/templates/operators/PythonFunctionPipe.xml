@@ -6,7 +6,9 @@
 <operatorModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.ibm.com/xmlns/prod/streams/spl/operator" xmlns:cmn="http://www.ibm.com/xmlns/prod/streams/spl/common" xsi:schemaLocation="http://www.ibm.com/xmlns/prod/streams/spl/operator operatorModel.xsd">
   <cppOperatorModel>
     <context>
-      <description>__SPLPY__DESCRIPTION__SPLPY__</description>
+      <description>
+__SPLPY__DESCRIPTION__SPLPY__
+      </description>
       <iconUri size="16">../../opt/.__splpy/icons/python-powered16.gif</iconUri>
       <iconUri size="32">../../opt/.__splpy/icons/python-powered32.gif</iconUri>
       <metrics>
@@ -21,8 +23,7 @@
         <library>
           <cmn:description>Python libraries.</cmn:description>
           <cmn:managedLibrary>
-            <cmn:lib>python__SPLPY__MAJOR_VERSION__SPLPY__.__SPLPY__MINOR_VERSION__SPLPY__m</cmn:lib>
-            <cmn:command>../../opt/.__splpy/common/pyversion.sh</cmn:command>
+            <cmn:command>../../opt/.__splpy/common/pyversion__SPLPY__MAJOR_VERSION__SPLPY__.sh</cmn:command>
           </cmn:managedLibrary>
         </library>
       </libraryDependencies>
@@ -31,9 +32,13 @@
     </context>
     <parameters>
       <allowAny>false</allowAny>
+      __SPLPY__PARAMETERS__SPLPY__
     </parameters>
     <inputPorts>
       <inputPortSet>
+        <description>
+__SPLPY__INPORT_0_DESCRIPTION__SPLPY__
+        </description>
         <tupleMutationAllowed>false</tupleMutationAllowed>
         <windowingMode>NonWindowed</windowingMode>
         <windowPunctuationInputMode>Oblivious</windowPunctuationInputMode>

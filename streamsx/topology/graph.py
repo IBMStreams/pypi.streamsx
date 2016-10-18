@@ -7,14 +7,18 @@ import inspect
 import pickle
 import base64
 import streamsx.topology.dependency
+import streamsx.topology.functions
 import streamsx.topology.param
 from streamsx.topology.schema import CommonSchema
+from streamsx.topology.schema import _stream_schema
 
 class SPLGraph(object):
 
     def __init__(self, name=None):
         if name is None:
             name = str(uuid.uuid1()).replace("-", "")
+        # Allows Topology or SPLGraph to be passed to submit
+        self.graph = self
         self.name = name
         self.operators = []
         self.resolver = streamsx.topology.dependency._DependencyResolver()
@@ -45,8 +49,12 @@ class SPLGraph(object):
             op = SPLInvocation(len(self.operators), kind, function, name, params, self)
         self.operators.append(op)
         if not function is None:
-            if not inspect.isbuiltin(function):
-                self.resolver.add_dependencies(inspect.getmodule(function))
+            dep_instance = function
+            if isinstance(function, streamsx.topology.functions._IterableInstance):
+                dep_instance = type(function._it)
+
+            if not inspect.isbuiltin(dep_instance):
+                self.resolver.add_dependencies(inspect.getmodule(dep_instance))
         return op
     
     def addPassThruOperator(self):
@@ -242,7 +250,7 @@ class OPort(object):
     def __init__(self, name, operator, index, schema, width=None, partitioned=None):
         self.name = name
         self.operator = operator
-        self.schema = schema
+        self.schema = _stream_schema(schema)
         self.index = index
         self.width = width
         self.partitioned =  partitioned
