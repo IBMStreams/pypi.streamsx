@@ -24,7 +24,9 @@
    <delete file="release.tgz"/>
    <mkdir dir="release"/>
 
-   <get src="https://github.com/IBMStreams/streamsx.topology/releases/download/v1.4.3/streamsx.topology-v1.4-20160815-1122.tgz" dest="release.tgz"/>
+   <get src=
+   "https://github.com/IBMStreams/streamsx.topology/releases/download/v1.5.1_ea1/streamsx.topology-v1.5-20161017-2227.tgz"
+      dest="release.tgz"/>
    <untar src="release.tgz" dest="release" compression="gzip"/>
 
    <delete dir="${streamsx.py}/.toolkit"/>
