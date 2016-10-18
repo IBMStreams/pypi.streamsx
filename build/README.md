@@ -15,7 +15,7 @@ See : http://peterdowns.com/posts/first-time-with-pypi.html
 
 Upload to test PyPi
 
-1. `python setup.py sdist upload -r pypitest`
+1. `python setup.py sdist bdist_wheel upload -r pypitest`
 
 You can test by installing using
 
@@ -23,4 +23,4 @@ You can test by installing using
 
 Then upload to production Py Pi
 
-1. `python setup.py sdist upload -r pypi`
+1. `python setup.py sdist bdist_wheel upload -r pypi`
