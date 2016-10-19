@@ -43,6 +43,11 @@
        <fileset dir="${streamsx.py}/.toolkit/com.ibm.streamsx.topology/opt/python/packages/streamsx"
           excludes="**/__pycache__/** **/*.pyc *.pyc"/>
    </copy>
+   <chmod perm="+x">
+     <fileset dir="${streamsx.py}/.toolkit">
+         <include name="**/*.sh"/>
+     </fileset>
+   </chmod>
 
    <exec executable="git">
       <arg value="add"/>
