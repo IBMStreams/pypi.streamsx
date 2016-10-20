@@ -20,13 +20,14 @@
 <tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
 <td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top>base64<br>
 dill<br>
-</td><td width="25%" valign=top>inspect<br>
-json<br>
-</td><td width="25%" valign=top>pickle<br>
+inspect<br>
+</td><td width="25%" valign=top>json<br>
+pickle<br>
 <a href="streamsx.html">streamsx</a><br>
-</td><td width="25%" valign=top>types<br>
+</td><td width="25%" valign=top>sys<br>
+types<br>
 uuid<br>
-</td></tr></table></td></tr></table><p>
+</td><td width="25%" valign=top></td></tr></table></td></tr></table><p>
 <table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
 <tr bgcolor="#ee77aa">
 <td colspan=3 valign=bottom>&nbsp;<br>
@@ -93,7 +94,7 @@ Methods defined here:<br>
 Methods inherited from <a href="streamsx.topology.graph.html#SPLInvocation">SPLInvocation</a>:<br>
 <dl><dt><a name="Marker-addInputPort"><strong>addInputPort</strong></a>(self, name=None, outputPort=None)</dt></dl>
 
-<dl><dt><a name="Marker-addOutputPort"><strong>addOutputPort</strong></a>(self, oWidth=None, name=None, inputPort=None, schema=&lt;CommonSchema.Python: &lt;streamsx.topology.schema.StreamSchema object at 0x7f623af83828&gt;&gt;, partitioned=None)</dt></dl>
+<dl><dt><a name="Marker-addOutputPort"><strong>addOutputPort</strong></a>(self, oWidth=None, name=None, inputPort=None, schema=&lt;CommonSchema.Python: &lt;streamsx.topology.schema.StreamSchema object at 0x7f7f5c3e9390&gt;&gt;, partitioned=None)</dt></dl>
 
 <dl><dt><a name="Marker-addViewConfig"><strong>addViewConfig</strong></a>(self, view_configs)</dt></dl>
 
@@ -141,7 +142,7 @@ Data descriptors defined here:<br>
     
 <tr><td bgcolor="#ffc8d8"><tt>&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
 <td width="100%">Methods defined here:<br>
-<dl><dt><a name="SPLGraph-__init__"><strong>__init__</strong></a>(self, name=None)</dt><dd><tt>Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</tt></dd></dl>
+<dl><dt><a name="SPLGraph-__init__"><strong>__init__</strong></a>(self, name=None, packages=None)</dt><dd><tt>Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</tt></dd></dl>
 
 <dl><dt><a name="SPLGraph-addModules"><strong>addModules</strong></a>(self, includes)</dt></dl>
 
@@ -181,7 +182,7 @@ Data descriptors defined here:<br>
 
 <dl><dt><a name="SPLInvocation-addInputPort"><strong>addInputPort</strong></a>(self, name=None, outputPort=None)</dt></dl>
 
-<dl><dt><a name="SPLInvocation-addOutputPort"><strong>addOutputPort</strong></a>(self, oWidth=None, name=None, inputPort=None, schema=&lt;CommonSchema.Python: &lt;streamsx.topology.schema.StreamSchema object at 0x7f623af83828&gt;&gt;, partitioned=None)</dt></dl>
+<dl><dt><a name="SPLInvocation-addOutputPort"><strong>addOutputPort</strong></a>(self, oWidth=None, name=None, inputPort=None, schema=&lt;CommonSchema.Python: &lt;streamsx.topology.schema.StreamSchema object at 0x7f7f5c3e9390&gt;&gt;, partitioned=None)</dt></dl>
 
 <dl><dt><a name="SPLInvocation-addViewConfig"><strong>addViewConfig</strong></a>(self, view_configs)</dt></dl>
 
