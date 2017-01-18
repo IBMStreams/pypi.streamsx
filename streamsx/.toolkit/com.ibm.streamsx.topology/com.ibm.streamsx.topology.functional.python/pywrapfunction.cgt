@@ -12,7 +12,7 @@
 
     // pointer to the application function or callable class
     PyObject * appCallable = 
-      streamsx::topology::Splpy::loadFunction(<%=$pyModule%>, <%=$pyCallableName%>);
+      SplpyGeneral::loadFunction(<%=$pyModule%>, <%=$pyCallableName%>);
 
     // The object to be called is either appCallable for
     // a function passed into the operator
@@ -22,16 +22,16 @@
     <% if ($pyCallable) { %>
       // argument is the serialized callable instance
       Py_DECREF(appCallable);
-      appCallable = Py_BuildValue("s", <%=$pyCallable%>);
+      appCallable = pyUnicode_FromUTF8(<%=$pyCallable%>);
     <%}%>
 
-     PyObject * depickleInput = streamsx::topology::Splpy::loadFunction("streamsx.topology.runtime", "<%=$pywrapfunc%>");
+     PyObject * depickleInput = SplpyGeneral::loadFunction("streamsx.topology.runtime", "<%=$pywrapfunc%>");
     PyObject * funcArg = PyTuple_New(1);
-    PyTuple_SetItem(funcArg, 0, appCallable);
+    PyTuple_SET_ITEM(funcArg, 0, appCallable);
     function_ = PyObject_CallObject(depickleInput, funcArg);
     Py_DECREF(depickleInput);
     Py_DECREF(funcArg);
     if(function_ == 0){
-      streamsx::topology::flush_PyErr_Print();
+      SplpyGeneral::flush_PyErr_Print();
       throw;
     }

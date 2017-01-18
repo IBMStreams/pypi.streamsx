@@ -1,16 +1,12 @@
 /*
  * # Licensed Materials - Property of IBM
- * # Copyright IBM Corp. 2015  
+ * # Copyright IBM Corp. 2015,2016
  */
 
-#include <Python.h>
-#include <string>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdio.h>
-
 #include "splpy.h"
+#include "splpy_pyop.h"
+
+using namespace streamsx::topology;
 
 <%SPL::CodeGen::implementationPrologue($model);%>
 
@@ -44,6 +40,7 @@
 
 // Constructor
 MY_OPERATOR::MY_OPERATOR() :
+    pyop_(NULL),
     function_(NULL),
     pyInNames_(NULL)
 {
@@ -51,7 +48,7 @@ MY_OPERATOR::MY_OPERATOR() :
 
 <% if ($paramStyle eq 'dictionary') { %>
    {
-      streamsx::topology::PyGILLock lock;
+      SplpyGILLock lock;
       pyInNames_ = streamsx::topology::Splpy::pyAttributeNames(
                getInputPortAt(0));
    }
@@ -61,37 +58,26 @@ MY_OPERATOR::MY_OPERATOR() :
 // Destructor
 MY_OPERATOR::~MY_OPERATOR() 
 {
-   streamsx::topology::PyGILLock lock;
+   {
+   SplpyGILLock lock;
    if (function_)
       Py_DECREF(function_);
    if (pyInNames_)
       Py_DECREF(pyInNames_);
+    }
+   delete pyop_;
 }
 
-// Notify port readiness
-void MY_OPERATOR::allPortsReady() 
-{
-}
- 
 // Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
-}
-
-// Processing for source and threaded operators   
-void MY_OPERATOR::process(uint32_t idx)
-{
-}
-
-// Tuple processing for mutating ports 
-void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
-{
+    SplpyOp::prepareToShutdown();
 }
 
 // Tuple processing for non-mutating ports
 void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 {
-   streamsx::topology::PyGILLock lock;
+   SplpyGILLock lock;
 
  @include  "../../opt/.__splpy/common/py_splTupleToFunctionArgs.cgt"
   
@@ -99,17 +85,11 @@ void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 
     Py_DECREF(pyTuple);
     if (pyReturnNone == NULL) {
-        SPLAPPLOG(L_ERROR, "Fatal error: function failed: " << "<%=$functionName%>", "python");
-        streamsx::topology::flush_PyErr_Print();
-        throw;
+        SPLAPPTRC(L_ERROR, "Fatal error: function failed: " << "<%=$functionName%>", "python");
+        throw SplpyGeneral::pythonException("<%=$functionName%>");
     }
 
     Py_DECREF(pyReturnNone);
-}
-
-// Punctuation processing
-void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
-{
 }
 
 <%SPL::CodeGen::implementationEpilogue($model);%>

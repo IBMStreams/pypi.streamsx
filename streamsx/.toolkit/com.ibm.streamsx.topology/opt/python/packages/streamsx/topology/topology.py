@@ -16,7 +16,6 @@ except (ImportError,NameError):
 import random
 from streamsx.topology import graph
 from streamsx.topology import schema
-from streamsx.topology import topologypackages
 import streamsx.topology.functions
 import json
 import threading
@@ -28,7 +27,19 @@ from platform import python_version
 from enum import Enum
 
 class Topology(object):
-    """Topology that contains graph + operators"""
+    """The Topology class is used to define data sources, and is passed as a parameter when submittion an application.
+       Topology keeps track of all sources, sinks, and data operations within your application.
+
+       Instance variables:
+           include_packages: Set of Python package names to be included in the built application. 
+
+           exclude_packages: Set of Python package names to be excluded from the built application.
+           When compiling the application using Anaconda this set is pre-loaded with Python pacakges from the 
+           Anaconda pre-loaded  set of applications.
+
+           package names in the include_packages set take precedence over package namers in the exclude_pacakges set.
+    """  
+
     def __init__(self, name, files=None):
         self.name = name
         self.pythonversion = python_version()
@@ -38,8 +49,12 @@ class Topology(object):
           self.opnamespace = "com.ibm.streamsx.topology.functional.python2"
         else:
           raise ValueError("Python version not supported.")
-        self.dependent_packages = topologypackages.TopologyPackages()
-        self.graph = graph.SPLGraph(name, self.dependent_packages)
+        self.include_packages = set() 
+        self.exclude_packages = set() 
+        if "Anaconda" in sys.version:
+            import streamsx.topology.condapkgs
+            self.exclude_packages.update(streamsx.topology.condapkgs._CONDA_PACKAGES)
+        self.graph = graph.SPLGraph(self, name)
         if files is not None:
             self.files = files
         else:
@@ -104,14 +119,16 @@ class Topology(object):
         """
         op = self.graph.addOperator(kind="com.ibm.streamsx.topology.topic::Subscribe")
         oport = op.addOutputPort(schema=schema)
-        subscribeParams = {'topic': [topic], 'streamType': schema}
+        subscribeParams = {'topic': topic, 'streamType': schema}
         op.setParameters(subscribeParams)
-        return Stream(self, oport)    
+        return Stream(self, oport)
     
 
 class Stream(object):
     """
-    Definition of a data stream in python.
+    The Stream class is the primary abstraction within a streaming application. It represents a potentially infinite 
+    series of tuples which can be operated upon to produce another stream, as in the case of Stream.map(), or 
+    terminate a stream, as in the case of Stream.sink().
     """
     def __init__(self, topology, oport):
         self.topology = topology
@@ -264,6 +281,7 @@ class Stream(object):
             Stream
         """
         op = self.topology.graph.addOperator("$Isolate$")
+        # does the addOperator above need the packages
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
@@ -281,6 +299,8 @@ class Stream(object):
             Stream
         """
         op = self.topology.graph.addOperator("$LowLatency$")
+        # include_packages=self.include_packages, exclude_packages=self.exclude_packages)
+        # include_packages=self.include_packages, exclude_packages=self.exclude_packages)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
@@ -441,7 +461,7 @@ class Stream(object):
             self._map(streamsx.topology.functions.identity,schema=schema).publish(topic, schema=schema);
             return None
 
-        publishParams = {'topic': [topic]}
+        publishParams = {'topic': topic}
         op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params=publishParams)
         op.addInputPort(outputPort=self.oport)
 
@@ -495,14 +515,16 @@ class View(threading.Thread):
         self.streams_context_config = {'username': '', 'password': '', 'rest_api_url': ''}
 
         self._last_collection_time = -1
+        self._last_collection_time_count = 0
         self.is_rest_initialized = False
 
     def initialize_rest(self):
         if not self.is_rest_initialized:
             if self.streams_context_config['username'] is None or \
-               self.streams_context_config['password'] is None:
+               self.streams_context_config['password'] is None or \
+               self.streams_context_config['rest_api_url'] is None:
                 raise ValueError(
-                    "WARNING: Both a username and password must be supplied when submitting a job in order to access view data")
+                    "WARNING: A username, a password, and a rest url must be present in order to access view data")
             from streamsx import rest
             rc = rest.StreamsContext(self.streams_context_config['username'],
                                      self.streams_context_config['password'],
@@ -524,7 +546,7 @@ class View(threading.Thread):
     def __call__(self):
         while not self._stopped():
             time.sleep(1)
-            _items = self._get_view_items(unseen=True)
+            _items = self._get_view_items()
             if _items is not None:
                 for itm in _items:
                     self.items.put(itm)
@@ -552,7 +574,8 @@ class View(threading.Thread):
         if self.view_object is None:
             raise "Error finding view."
 
-    def _get_view_items(self, unseen=False):
+    def _get_view_items(self):
+        # Retrieve the view object
         view = self.view_object
         if self.view_object is None:
             return None
@@ -561,12 +584,35 @@ class View(threading.Thread):
         items = view.get_view_items()
         data = []
 
+        # The number of already seen tuples to ignore on the last millisecond time boundary
+        ignore_last_collection_time_count = self._last_collection_time_count
+
         for item in items:
-            if not unseen or item.collectionTime > self._last_collection_time:
+            # Ignore tuples from milliseconds we've already seen
+            if item.collectionTime < self._last_collection_time:
+                continue
+            elif item.collectionTime == self._last_collection_time:
+                # Ignore tuples within the millisecond which we've already seen.
+                if ignore_last_collection_time_count > 0:
+                    ignore_last_collection_time_count -= 1
+                    continue
+
+                # If we haven't seen it, continue
+                data.append(json.loads(item.data[data_name]))
+            else:
                 data.append(json.loads(item.data[data_name]))
 
         if len(items) > 0:
-            self._last_collection_time = items[-1].collectionTime
+            # Record the current millisecond time boundary.
+            _last_collection_time = items[-1].collectionTime
+            _last_collection_time_count = 0
+            backwards_counter = len(items) - 1
+            while backwards_counter > 0 and items[backwards_counter] == _last_collection_time:
+                _last_collection_time_count += 1
+                backwards_counter -= 1
+
+            self._last_collection_time = _last_collection_time
+            self._last_collection_time_count = _last_collection_time_count
 
         return data
 

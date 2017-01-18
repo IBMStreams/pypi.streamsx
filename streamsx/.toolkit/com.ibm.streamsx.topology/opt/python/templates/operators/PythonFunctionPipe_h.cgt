@@ -3,9 +3,16 @@
  * # Copyright IBM Corp. 2015  
  */
 
-#include <Python.h>
+#include "splpy_pyop.h"
+
+using namespace streamsx::topology;
 
 <%SPL::CodeGen::headerPrologue($model);%>
+
+<%
+  my $oport = $model->getOutputPortAt(0);
+  my $iport = $model->getInputPortAt(0);
+%>
 
 class MY_OPERATOR : public MY_BASE_OPERATOR 
 {
@@ -16,18 +23,9 @@ public:
   // Destructor
   virtual ~MY_OPERATOR(); 
 
-  // Notify port readiness
-  void allPortsReady(); 
-
   // Notify pending shutdown
   void prepareToShutdown(); 
 
-  // Processing for source and threaded operators   
-  void process(uint32_t idx);
-    
-  // Tuple processing for mutating ports 
-  void process(Tuple & tuple, uint32_t port);
-    
   // Tuple processing for non-mutating ports
   void process(Tuple const & tuple, uint32_t port);
 
@@ -35,10 +33,13 @@ public:
   void process(Punctuation const & punct, uint32_t port);
 private:
   // Members
+    SplpyPyOp *pyop_;
+
     PyObject *function_;
     PyObject *pyInNames_;
     PyObject *pyOutNames_;
+
+    void fromPythonToPort0(PyObject * pyTuple, <%=$oport->getCppTupleType()%> & otuple, <%=$iport->getCppTupleType()%> const & ituple);
 }; 
 
 <%SPL::CodeGen::headerEpilogue($model);%>
-
