@@ -41,10 +41,27 @@
 
 #include "splpy_sym.h"
 
+//#define __SPLPY_BUILD_VERS(_MAJOR, _MINOR) #_MAJOR "." #_MINOR
+#define __SPLPY_STR(X) #X
+#define __SPLPY_XSTR(X) __SPLPY_STR(X)
+
+#define __SPLPY_MAJOR_VER __SPLPY_XSTR(PY_MAJOR_VERSION)
+#define __SPLPY_MINOR_VER __SPLPY_XSTR(PY_MINOR_VERSION)
+
+#define __SPLPY_VERSION __SPLPY_MAJOR_VER "." __SPLPY_MINOR_VER 
+ 
 #if PY_MAJOR_VERSION == 3
-#define TOPOLOGY_PYTHON_LIBNAME "libpython3.5m.so"
-#else
+#define TOPOLOGY_PYTHON_LIBNAME "libpython" __SPLPY_VERSION "m.so"
+#elif PY_MAJOR_VERSION == 2
+#if PY_MINOR_VERSION == 7
+// There will never be a Python 2.8
+// PEP-404 https://www.python.org/dev/peps/pep-0404/
 #define TOPOLOGY_PYTHON_LIBNAME "libpython2.7.so"
+#endif
+#endif
+
+#ifndef TOPOLOGY_PYTHON_LIBNAME
+#error "Python version not supported"
 #endif
 
 namespace streamsx {
@@ -60,35 +77,69 @@ class SplpySetup {
      */
     static void * loadCPython(const char* spl_setup_py_path) {
         void * pydl = loadPythonLib();
-        setupGeneral(pydl);
+        setupNone(pydl);
         SplpySym::fixSymbols(pydl);
         startPython(pydl);
         runSplSetup(pydl, spl_setup_py_path);
         return pydl;
     }
 
+    /*
+     * Load 'None' dynamically to avoid a dependency
+     * on the variable from libpythonX.Y.so.
+     */
+    static void setupNone(void * pydl) {
+        typedef PyObject * (*__splpy_bv)(const char *, ...);
+
+        // empty format returns None
+        PyObject * none =
+                ((__splpy_bv) dlsym(pydl, "Py_BuildValue"))("");
+        
+        // Call the isNone passing in none which will
+        // be the first caller (as this is in setup)
+        // and thus set the local pointer to None (effectively Py_None).
+        bool in = SplpyGeneral::isNone(none);
+        if (!in) {
+          SPL::SPLRuntimeOperatorException exc("setup", "Internal error - None handling");
+          throw exc;
+        }
+    }
+
   private:
     static void * loadPythonLib() {
 
         std::string pyLib(TOPOLOGY_PYTHON_LIBNAME);
-        char * pyHome = getenv("PYTHONHOME");
+        const char * pyHome = getenv("PYTHONHOME");
         if (pyHome != NULL) {
+            SPLAPPLOG(L_INFO, TOPOLOGY_PYTHONHOME(pyHome), "python");
+
             std::string wk(pyHome);
             wk.append("/lib/");
             wk.append(pyLib);
 
             pyLib = wk;
+        } else {
+          std::string errtxt(TOPOLOGY_PYTHONHOME_NO(__SPLPY_VERSION));
+
+          SPLAPPLOG(L_ERROR, errtxt, "python");
+
+          SPL::SPLRuntimeOperatorException exc("setup", errtxt);
+          throw exc;
         }
-        // Log & trace
         SPLAPPLOG(L_INFO, TOPOLOGY_LOAD_LIB(pyLib), "python");
-        SPLAPPTRC(L_INFO, TOPOLOGY_LOAD_LIB(pyLib), "python");
 
         void * pydl = dlopen(pyLib.c_str(),
                          RTLD_LAZY | RTLD_GLOBAL | RTLD_DEEPBIND);
 
         if (NULL == pydl) {
-          SPLAPPLOG(L_ERROR, TOPOLOGY_LOAD_LIB_ERROR(pyLib), "python");
-          throw;
+          const char * dle = dlerror();
+          std::string dles(dle == NULL ? "" : dle);
+
+          std::string errtxt(TOPOLOGY_LOAD_LIB_ERROR(pyLib, __SPLPY_VERSION, dles));
+          SPLAPPLOG(L_ERROR, errtxt, "python");
+
+          SPL::SPLRuntimeOperatorException exc("setup", errtxt);
+          throw exc;
         }
         SPLAPPTRC(L_INFO, "Loaded Python library", "python");
         return pydl;
@@ -135,24 +186,6 @@ class SplpySetup {
         SPLAPPTRC(L_INFO, "Started Python runtime", "python");
     }
 
-    static void setupGeneral(void * pydl) {
-        typedef PyObject * (*__splpy_bv)(const char *, ...);
-        typedef PyObject * (*__splpy_bfl)(long);
-
-        __splpy_bv _SPLPy_BuildValue =
-             (__splpy_bv) dlsym(pydl, "Py_BuildValue");
-        __splpy_bfl _SPLPyBool_FromLong =
-             (__splpy_bfl) dlsym(pydl, "PyBool_FromLong");
-
-        // empty format returns None
-        PyObject * none = _SPLPy_BuildValue("");
-
-        PyObject * f = _SPLPyBool_FromLong(0);
-        PyObject * t = _SPLPyBool_FromLong(1);
-
-        SplpyGeneral::setup(none, f, t);
-    }
-
     static void runSplSetup(void * pydl, const char* spl_setup_py_path) {
         std::string tkDir = SPL::ProcessingElement::pe().getToolkitDirectory();
         std::string streamsxDir = tkDir + spl_setup_py_path;
@@ -173,7 +206,7 @@ class SplpySetup {
         __splpy_rsfef _SPLPyRun_SimpleFileEx = 
              (__splpy_rsfef) dlsym(pydl, "PyRun_SimpleFileExFlags");
 
-        SplpyGILLock lock;
+        SplpyGIL lock;
         // The 1 closes the file.
         if (_SPLPyRun_SimpleFileEx(fdopen(fd, "r"), spl_setup_py, 1, NULL) != 0) {
           SPLAPPTRC(L_ERROR, "Python script splpy_setup.py failed!", "python");

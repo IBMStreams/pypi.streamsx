@@ -30,32 +30,74 @@ namespace streamsx {
 
 class SplpyFuncOp : public SplpyOp {
   public:
-      SplpyFuncOp(SPL::Operator * op) :
-         SplpyOp(op, "/opt/python/packages/streamsx/topology") {
+      PyObject *function_;
+
+      SplpyFuncOp(SPL::Operator * op, const std::string & wrapfn) :
+         SplpyOp(op, "/opt/python/packages/streamsx/topology"),
+         function_(NULL)
+      {
          addAppPythonPackages();
+         loadAndWrapCallable(wrapfn);
+      }
+ 
+      ~SplpyFuncOp() {
+          SplpyGIL lock;
+          if (function_)
+             Py_DECREF(function_);
       }
 
   private:
 
+      int hasParam(const char *name) {
+          return op()->getParameterNames().count(name);
+      }
+
+      const SPL::rstring & param(const char *name) {
+          return op()->getParameterValues(name)[0]->getValue();
+      }
+
+      /**
+       * Load and wrap the callable that will be invoked
+       * by the operator.
+      */
+      void loadAndWrapCallable(const std::string & wrapfn) {
+          SplpyGIL lock;
+
+          // pointer to the application function or callable class
+          PyObject * appCallable =
+             SplpyGeneral::loadFunction(param("pyModule"), param("pyName"));
+
+          // The object to be called is either appCallable for
+          // a function passed into the operator
+          // or a pickled encoded class instance
+          // represented as a string in parameter pyCallable
+    
+          if (hasParam("pyCallable")) {
+             // argument is the serialized callable instance
+             PyObject * appClass = appCallable;
+             appCallable = pyUnicode_FromUTF8(param("pyCallable").c_str());
+             Py_DECREF(appClass);
+          }
+
+          function_ = SplpyGeneral::callFunction(
+               "streamsx.topology.runtime", wrapfn, appCallable, NULL);
+      }
+
       /*
-       *  Add any packages in the application directory which
+       *  Add any packages in the application directory
+       *  to the Python path. The application directory
        *  is passed to each invocation of the functional 
-       *  operators as the paramter toolkitDir. The value
+       *  operators as the parameter toolkitDir. The value
        *  passed is the toolkit of the invocation of the operator.
        */
       void addAppPythonPackages() {
-          SplpyGILLock lock;
+          SplpyGIL lock;
 
-          std::string appDirSetup = "import streamsx.topology.runtime\n";
-          appDirSetup += "streamsx.topology.runtime.setupOperator(\"";
-          appDirSetup += static_cast<SPL::rstring>(op()->getParameterValues("toolkitDir")[0]->getValue());
-          appDirSetup += "\")\n";
+          PyObject * tkDir =
+            streamsx::topology::pyUnicode_FromUTF8(param("toolkitDir"));
 
-          const char* spl_setup_appdir = appDirSetup.c_str();
-          if (PyRun_SimpleString(spl_setup_appdir) != 0) {
-              SPLAPPTRC(L_ERROR, "Python streamsx.topology.runtime.setupOperator failed!", "python");
-              throw SplpyGeneral::pythonException("streamsx.topology.runtime.setupOperator");
-          }
+          SplpyGeneral::callVoidFunction(
+              "streamsx.topology.runtime", "setupOperator", tkDir, NULL);
       }
 };
 

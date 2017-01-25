@@ -40,16 +40,15 @@ MY_OPERATOR::MY_OPERATOR() :
 @include  "../../opt/.__splpy/common/py_constructor.cgt"
    
    {
-      SplpyGILLock lock;
+      SplpyGIL lock;
 
       // function_ is an instance of the callable class
       // then when called returns an iterable
-     function_ = streamsx::topology::Splpy::callFunction(
+     function_ = SplpyGeneral::callFunction(
              "streamsx.spl.runtime", "_splpy_iter_source",
              function_, NULL);   
 
-     pyOutNames_ = streamsx::topology::Splpy::pyAttributeNames(
-               getOutputPortAt(0));
+     pyOutNames_ = Splpy::pyAttributeNames(getOutputPortAt(0));
 
      // Now create the wrapper function that converts
      // other types returned by the user's function
@@ -57,7 +56,7 @@ MY_OPERATOR::MY_OPERATOR() :
      // decorated operators only handle tuples to
      // simplify the generated code.
      Py_INCREF(pyOutNames_); // callFunction steals the reference
-     function_ = streamsx::topology::Splpy::callFunction(
+     function_ = SplpyGeneral::callFunction(
              "streamsx.spl.runtime", "_splpy_to_tuples",
              function_, pyOutNames_);   
    }
@@ -67,7 +66,7 @@ MY_OPERATOR::MY_OPERATOR() :
 MY_OPERATOR::~MY_OPERATOR() 
 {
    {
-   SplpyGILLock lock;
+   SplpyGIL lock;
    if (function_)
       Py_DECREF(function_);
    if (pyOutNames_)
@@ -99,7 +98,7 @@ void MY_OPERATOR::process(uint32_t idx)
     std::vector<OPort0Type> output_tuples;  
     {
       // Don't hold the lock across submission
-      SplpyGILLock lock;
+      SplpyGIL lock;
 
       PyObject *pyTuple = PyTuple_New(0);
       PyObject *pyDict = NULL;

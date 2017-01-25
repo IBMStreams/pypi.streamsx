@@ -333,35 +333,11 @@ namespace streamsx {
 
       public:
 
-
-    /*
-    * One off generic call a function by name passing one or two arguments
-    * returning its return. Used for setup calls in operator constructors
-    * as the reference to the method is not kept, assuming it is not
-    * called frequently.
-    * References to the arguments are stolen by this function.
-    */
-    static PyObject * callFunction(const char * module, const char *name, PyObject * arg1, PyObject * arg2) {
-         PyObject *fn = SplpyGeneral::loadFunction(module, name);
-
-         PyObject *tc = PyTuple_New(arg2 == NULL ? 1 : 2);
-         PyTuple_SET_ITEM(tc, 0, arg1);
-         if (arg2 != NULL)
-             PyTuple_SET_ITEM(tc, 1, arg2);
-
-         PyObject * ret = PyObject_Call(fn, tc, NULL);
-
-         Py_DECREF(tc);
-         Py_DECREF(fn);
-
-         return ret;
-    }
-
     // Call the function passing an SPL attribute
     // converted to a Python object and discard the return 
     template <class T>
     static void pyTupleSink(PyObject * function, T & splVal) {
-      SplpyGILLock lock;
+      SplpyGIL lock;
 
       PyObject * arg = pySplValueToPyObject(splVal);
 
@@ -374,16 +350,6 @@ namespace streamsx {
       Py_DECREF(pyReturnVar);
     }
     
-    // prints a string representation of the PyObject for debugging purposes
-    static void printPyObject(PyObject * pyObject) {
-      PyObject* pyRepr = PyObject_Repr(pyObject);
-      PyObject* pyStrBytes = PyUnicode_AsUTF8String(pyRepr);
-      const char* s = PyBytes_AsString(pyStrBytes);
-      std::cout << "pyObject=" << s << std::endl;
-      Py_DECREF(pyStrBytes);
-      Py_DECREF(pyRepr);
-    }
-
     /*
     * Call a function passing the SPL attribute value of type T
     * and return the function return as a boolean
@@ -391,7 +357,7 @@ namespace streamsx {
     template <class T>
     static int pyTupleFilter(PyObject * function, T & splVal) {
 
-      SplpyGILLock lock;
+      SplpyGIL lock;
 
       PyObject * arg = pySplValueToPyObject(splVal);
 
@@ -413,7 +379,7 @@ namespace streamsx {
     */
     template <class T, class R>
     static int pyTupleTransform(PyObject * function, T & splVal, R & retSplVal) {
-      SplpyGILLock lock;
+      SplpyGIL lock;
 
       PyObject * arg = pySplValueToPyObject(splVal);
 
@@ -437,7 +403,7 @@ namespace streamsx {
     template <class T>
     static SPL::int32 pyTupleHash(PyObject * function, T & splVal) {
 
-      SplpyGILLock lock;
+      SplpyGIL lock;
 
       PyObject * arg = pySplValueToPyObject(splVal);
 

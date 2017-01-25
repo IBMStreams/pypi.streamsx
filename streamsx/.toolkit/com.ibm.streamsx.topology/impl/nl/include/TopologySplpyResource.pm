@@ -7,19 +7,19 @@ unshift(@INC, $ENV{STREAMS_INSTALL} . "/system/impl/bin") if ($ENV{STREAMS_INSTA
 require SPL::Helper;
 my $toolkitRoot = dirname(abs_path(__FILE__)) . '/../../..';
 
-sub TOPOLOGY_LD_LIB_PATH($)
+sub TOPOLOGY_PYTHONHOME($)
 {
    my $defaultText = <<'::STOP::';
-LD_LIBRARY_PATH={0}.
+PYTHONHOME={0}.
 ::STOP::
     return SPL::Helper::SPLFormattedMessage($toolkitRoot, "com.ibm.streamsx.topology", "TopologySplpyResource", "en_US/TopologySplpyResource.xlf", "CDIST0301I", \$defaultText, @_);
 }
 
 
-sub TOPOLOGY_LD_LIB_PATH_NO()
+sub TOPOLOGY_PYTHONHOME_NO($)
 {
    my $defaultText = <<'::STOP::';
-LD_LIBRARY_PATH not set.
+PYTHONHOME environment variable not set. Please set PYTHONHOME to a valid Python {0} install.
 ::STOP::
     return SPL::Helper::SPLFormattedMessage($toolkitRoot, "com.ibm.streamsx.topology", "TopologySplpyResource", "en_US/TopologySplpyResource.xlf", "CDIST0302I", \$defaultText, @_);
 }
@@ -34,10 +34,10 @@ Loading Python library: {0}.
 }
 
 
-sub TOPOLOGY_LOAD_LIB_ERROR($)
+sub TOPOLOGY_LOAD_LIB_ERROR($$$)
 {
    my $defaultText = <<'::STOP::';
-Fatal error: could not open Python library: {0}.
+Fatal error: could not open Python library: {0} : {2}. Please set PYTHONHOME to a valid Python {1} install.
 ::STOP::
     return SPL::Helper::SPLFormattedMessage($toolkitRoot, "com.ibm.streamsx.topology", "TopologySplpyResource", "en_US/TopologySplpyResource.xlf", "CDIST0304E", \$defaultText, @_);
 }

@@ -37,9 +37,6 @@ sub main::generate($$) {
    print '  // Members', "\n";
    print '  // Control for interaction with Python', "\n";
    print '  SplpyFuncOp *funcop_;', "\n";
-   print '  ', "\n";
-   print '  // Python iterator of pickled tuples', "\n";
-   print '  PyObject *function_;', "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);
