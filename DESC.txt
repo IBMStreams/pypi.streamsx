@@ -1,9 +1,8 @@
-========
-streamsx
-========
-
 Python APIs for use with Streaming Analytics service on
-IBM Bluemix cloud platform and on-premises IBM Streams.
+IBM® Bluemix cloud platform and on-premises IBM Streams.
+
+ * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
+ * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
 Python Application API for Streams
 ==================================
@@ -29,5 +28,5 @@ Streams Python REST API
 Module that allows interaction with an running Streams instance or service
 through HTTPS REST APIs.
 
-See `streamsx.rest<http://ibmstreams.github.io/streamsx.topology/doc/pythondoc/index.html>`_
+See `streamsx.rest <http://ibmstreams.github.io/streamsx.topology/doc/pythondoc/index.html>`_
 
