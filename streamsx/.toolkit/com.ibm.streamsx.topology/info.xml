@@ -39,7 +39,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
 
     </description>
     <!-- This is currently development for the 1.5 release -->
-    <version>1.5.10.__dev__</version>
+    <version>1.5.11.__dev__</version>
     <!-- Require Java 8 so minimium is 4.0.1.0 -->
     <requiredProductVersion>4.0.1.0</requiredProductVersion>
     </identity>
@@ -47,7 +47,14 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
   <resources>
     <messageSet name="TopologySplpyResource">
       <lang default="true">en_US/TopologySplpyResource.xlf</lang>
-      <!-- <lang>de_DE/TopologySplpyResource.xlf</lang> -->
+      <lang>fr_FR/TopologySplpyResource.xlf</lang>
+      <lang>it_IT/TopologySplpyResource.xlf</lang>
+      <lang>ja_JP/TopologySplpyResource.xlf</lang>
+      <lang>ko_KR/TopologySplpyResource.xlf</lang>
+      <lang>pt_BR/TopologySplpyResource.xlf</lang>
+      <lang>ru_RU/TopologySplpyResource.xlf</lang>
+      <lang>zh_CN/TopologySplpyResource.xlf</lang>
+      <lang>zh_TW/TopologySplpyResource.xlf</lang>
     </messageSet>
   </resources>
   <sabFiles>

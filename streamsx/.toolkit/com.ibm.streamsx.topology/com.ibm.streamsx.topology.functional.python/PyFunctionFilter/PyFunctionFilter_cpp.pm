@@ -79,7 +79,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
-   print '    SplpyOp::prepareToShutdown();', "\n";
+   print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
    print '// Tuple processing for non-mutating ports', "\n";
@@ -107,7 +107,7 @@ sub main::generate($$) {
    print '  }', "\n";
    }
    print "\n";
-   print '  if (streamsx::topology::Splpy::pyTupleFilter(funcop_->function_, value)) {', "\n";
+   print '  if (streamsx::topology::Splpy::pyTupleFilter(funcop_->callable(), value)) {', "\n";
    print '      submit(tuple, 0);', "\n";
    print '  }', "\n";
    print '}', "\n";

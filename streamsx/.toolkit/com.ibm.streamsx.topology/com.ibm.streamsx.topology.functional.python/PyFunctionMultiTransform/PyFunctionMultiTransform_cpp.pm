@@ -80,7 +80,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
-   print '    SplpyOp::prepareToShutdown();', "\n";
+   print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
    print '// Tuple processing for non-mutating ports', "\n";
@@ -116,7 +116,7 @@ sub main::generate($$) {
    print '    // convert spl attribute to python object', "\n";
    print '    PyObject * pyArg = streamsx::topology::pySplValueToPyObject(value);', "\n";
    print "\n";
-   print '    PyObject * pyIterator = streamsx::topology::Splpy::pyTupleFunc(funcop_->function_, pyArg);', "\n";
+   print '    PyObject * pyIterator = streamsx::topology::Splpy::pyTupleFunc(funcop_->callable(), pyArg);', "\n";
    print "\n";
    print '    if (pyIterator == 0) {', "\n";
    print '         throw SplpyGeneral::pythonException(', "\n";

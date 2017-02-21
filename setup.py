@@ -1,16 +1,16 @@
 from setuptools import setup
 setup(
   name = 'streamsx',
-  packages = ['streamsx', 'streamsx.spl', 'streamsx.topology'],
+  packages = ['streamsx', 'streamsx.spl', 'streamsx.topology', 'streamsx.rest'],
   include_package_data=True,
-  version = '0.5.72',
+  version = '0.6.0',
   description = 'IBM Streams Python Support',
   long_description = open('DESC.txt').read(),
   author = 'IBM Streams @ github.com',
   author_email = 'debrunne@us.ibm.com',
   url = 'https://github.com/IBMStreams/pypi.streamsx',
-  download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/0.5.72',
-  keywords = ['streams', 'ibmstreams', 'streaming'],
+  download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/0.6.0',
+  keywords = ['streams', 'ibmstreams', 'streaming', 'analytics', 'streaming-analytics'],
   classifiers = [
     'Development Status :: 3 - Alpha',
     'License :: OSI Approved :: Apache Software License',

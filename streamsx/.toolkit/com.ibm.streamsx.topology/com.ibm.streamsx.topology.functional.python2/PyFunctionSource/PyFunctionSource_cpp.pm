@@ -44,7 +44,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
-   print '    SplpyOp::prepareToShutdown();', "\n";
+   print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
    print '// Processing for source and threaded operators   ', "\n";
@@ -56,13 +56,15 @@ sub main::generate($$) {
    print "\n";
    print '    { // start lock', "\n";
    print '      SplpyGIL lock;', "\n";
-   print '      PyObject * pyReturnVar = PyObject_CallObject(funcop_->function_, NULL);', "\n";
+   print '      PyObject * pyReturnVar = PyObject_CallObject(funcop_->callable(), NULL);', "\n";
+   print "\n";
+   print '      if (pyReturnVar == NULL) {', "\n";
+   print '         throw SplpyGeneral::pythonException("source");', "\n";
+   print '      }', "\n";
+   print ' ', "\n";
    print '      if (SplpyGeneral::isNone(pyReturnVar)) {', "\n";
    print '        Py_DECREF(pyReturnVar);', "\n";
    print '        break;', "\n";
-   print '      } else if(pyReturnVar == 0){', "\n";
-   print '        SplpyGeneral::flush_PyErrPyOut();', "\n";
-   print '        throw;', "\n";
    print '      }', "\n";
    print "\n";
    print '      pySplValueFromPyObject(otuple.get___spl_po(), pyReturnVar);', "\n";
