@@ -1,7 +1,7 @@
 from setuptools import setup
 setup(
   name = 'streamsx',
-  packages = ['streamsx', 'streamsx.spl', 'streamsx.topology', 'streamsx.rest'],
+  packages = ['streamsx', 'streamsx.spl', 'streamsx.topology'],
   include_package_data=True,
   version = '0.6.0',
   description = 'IBM Streams Python Support',
