@@ -7,6 +7,15 @@ Overview
 SPL primitive operators that call a Python function or
 callable class are created by decorators provided by this module.
 
+The name of the function or callable class becomes the name of the
+operator.
+
+.. warning::
+    Operator names must be valid SPL identifers,
+    SPL identifiers start with an ASCII letter or underscore,
+    followed by ASCII letters, digits, or underscores.
+    The name also must not be a SPL keyword.
+
 Once created the operators become part of a toolkit and may be used
 like any other SPL operator.
 
@@ -16,6 +25,10 @@ operator parameters.
 
 Python classes as SPL operators
 ===============================
+
+Overview
+--------
+
 Decorating a Python class creates a stateful SPL operator
 where the instance fields of the class are the operator's state. An instance
 of the class is created when the SPL operator invocation is initialized
@@ -30,6 +43,14 @@ If the `__init__` method has parameters beyond the first
 Any parameter that has a default value becomes an optional parameter
 to the SPL operator. Parameters of the form `\*args` and `\*\*kwargs`
 are not supported.
+
+.. warning::
+    Parameter names must be valid SPL identifers,
+    SPL identifiers start with an ASCII letter or underscore,
+    followed by ASCII letters, digits, or underscores.
+    The name also must not be a SPL keyword.
+
+    Parameter names ``suppress`` and ``include`` are reserved.
 
 The value of the operator parameters at SPL operator invocation are passed
 to the `__init__` method. This is equivalent to creating an instance
@@ -71,6 +92,46 @@ or both operator parameters can be set::
         start: 50;
         stop: 75;
     }
+
+Operator state
+--------------
+
+Use of a class allows the operator to be stateful by maintaining state in instance
+attributes across invocations (tuple processing).
+
+.. note::
+    For future compatibility instances of a class should ensure that the object's
+    state can be pickled. See https://docs.python.org/3.5/library/pickle.html#handling-stateful-objects
+
+Operator initialization & shutdown
+----------------------------------
+
+Execution of an instance for an operator effectively run in a context manager so that an instance's ``__enter__``
+method is called when the processing element containing the operator is initialized
+and its ``__exit__`` method called when the processing element is stopped. To take advantage of this
+the class must define both ``__enter__`` and ``__exit__`` methods.
+
+.. note::
+    For future compatibility operator initialization such as opening files should be in ``__enter__``
+    in order to support stateful operator restart & checkpointing in the future.
+
+Example of using ``__enter__`` and ``__exit__`` to open and close a file::
+
+    import streamsx.ec as ec
+
+    @spp.map()
+    class Sentiment(object):
+        def __init__(self, name):
+            self.name = name
+            self.file = None
+
+        def __enter__(self):
+            self.file = open(self.name, 'r')
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            if self.file is not None:
+                self.file.close()
+
 
 Python functions as SPL operators
 =================================
@@ -461,6 +522,7 @@ The list may be empty resulting in no tuples being submitted.
 from enum import Enum
 import functools
 import inspect
+import re
 import sys
 import streamsx.ec as ec
 
@@ -480,6 +542,19 @@ _OperatorType.Source.spl_template = 'PythonFunctionSource'
 _OperatorType.Pipe.spl_template = 'PythonFunctionPipe'
 _OperatorType.Sink.spl_template = 'PythonFunctionSink'
 _OperatorType.Filter.spl_template = 'PythonFunctionFilter'
+
+_SPL_KEYWORDS = {'graph', 'stream', 'public', 'composite', 'input', 'output', 'type', 'config', 'logic',
+                 'window', 'param', 'onTuple', 'onPunct', 'onProcess', 'state', 'stateful', 'mutable',
+                 'if', 'for', 'while', 'break', 'continue', 'return', 'attribute', 'function', 'operator'}
+
+def _valid_identifier(id):
+    if re.fullmatch('[a-zA-Z_][a-zA-Z_0-9]*', id) is None or id in _SPL_KEYWORDS:
+        raise ValueError("{0} is not a valid SPL identifier".format(id))
+
+def _valid_op_parameter(name):
+    _valid_identifier(name)
+    if name in ['suppress', 'include']:
+        raise ValueError("Parameter name {0} is reserved".format(name))
 
 def pipe(wrapped):
     """
@@ -510,6 +585,8 @@ def _wrapforsplop(optype, wrapped, style, docpy):
     if inspect.isclass(wrapped):
         if not callable(wrapped):
             raise TypeError('Class must be callable')
+
+        _valid_identifier(wrapped.__name__)
 
         class _op_class(object):
 
@@ -544,7 +621,9 @@ def _wrapforsplop(optype, wrapped, style, docpy):
         return _op_class
     if not inspect.isfunction(wrapped):
         raise TypeError('A function or callable class is required')
-      
+
+    _valid_identifier(wrapped.__name__)
+
     @functools.wraps(wrapped)
     def _op_fn(*args, **kwargs):
         return wrapped(*args, **kwargs)

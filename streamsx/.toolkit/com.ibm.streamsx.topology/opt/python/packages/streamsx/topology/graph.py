@@ -16,20 +16,42 @@ except ImportError:
 
 import types
 import base64
+import re
 import streamsx.topology.dependency
 import streamsx.topology.functions
 import streamsx.topology.param
 from streamsx.topology.schema import CommonSchema
 from streamsx.topology.schema import _stream_schema
 
+def _fix_namespace(ns):
+    ns = str(ns)
+    sns = ns.split('.')
+    if len(sns) == 1:
+        return re.sub(r'\W+', '', ns)
+    for i in range(0,len(sns)):
+        sns[i] = re.sub(r'\W+', '', sns[i])
+
+    for i in range(len(sns), 0):
+        if len(sns[i]) == 0:
+            sns.pop(i)
+
+    return '.'.join(sns)
+
+
 class SPLGraph(object):
 
-    def __init__(self, topology, name=None):
+    def __init__(self, topology, name=None, namespace=None):
         if name is None:
             name = str(uuid.uuid1()).replace("-", "")
+
+        if namespace is None:
+            namespace = name
+        
         # Allows Topology or SPLGraph to be passed to submit
         self.graph = self
-        self.name = name
+        # Remove 'awkward characters' from names
+        self.name = re.sub(r'\W+', '', str(name))
+        self.namespace = _fix_namespace(namespace)
         self.topology = topology
         self.operators = []
         self.resolver = streamsx.topology.dependency._DependencyResolver(self.topology)
@@ -41,7 +63,7 @@ class SPLGraph(object):
     def add_views(self, view):
         self._views.append(view)
 
-    def addOperator(self, kind, function=None, name=None, params=None):
+    def addOperator(self, kind, function=None, name=None, params=None, sl=None):
         if(params is None):
             params = {}
         if name is None:
@@ -64,7 +86,7 @@ class SPLGraph(object):
         else:
             if function is not None:
                 params['toolkitDir'] = streamsx.topology.param.toolkit_dir()
-            op = _SPLInvocation(len(self.operators), kind, function, name, params, self)
+            op = _SPLInvocation(len(self.operators), kind, function, name, params, self, sl=sl)
         self.operators.append(op)
         if not function is None:
             dep_instance = function
@@ -84,7 +106,7 @@ class SPLGraph(object):
     def generateSPLGraph(self):
         _graph = {}
         _graph["name"] = self.name
-        _graph["namespace"] = self.name
+        _graph["namespace"] = self.namespace
         _graph["public"] = True
         _graph["config"] = {}
         _graph["config"]["includes"] = []
@@ -119,7 +141,7 @@ class SPLGraph(object):
 
 class _SPLInvocation(object):
 
-    def __init__(self, index, kind, function, name, params, graph, view_configs = None):
+    def __init__(self, index, kind, function, name, params, graph, view_configs = None, sl=None):
         self.index = index
         self.kind = kind
         self.function = function
@@ -129,6 +151,7 @@ class _SPLInvocation(object):
         self._addOperatorFunction(self.function)
         self.graph = graph
         self.viewable = True
+        self.sl = sl
 
         if view_configs is None:
             self.view_configs = []
@@ -138,10 +161,10 @@ class _SPLInvocation(object):
         self.inputPorts = []
         self.outputPorts = []
 
-    def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema= CommonSchema.Python,partitioned=None):
+    def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema= CommonSchema.Python,partitioned_keys=None):
         if name is None:
             name = self.name + "_OUT"+str(len(self.outputPorts))
-        oport = OPort(name, self, len(self.outputPorts), schema, oWidth, partitioned)
+        oport = OPort(name, self, len(self.outputPorts), schema, oWidth, partitioned_keys)
         self.outputPorts.append(oport)
         if schema == CommonSchema.Python:
             self.viewable = False
@@ -217,6 +240,9 @@ class _SPLInvocation(object):
                 _params[name] = _value
         _op["parameters"] = _params
 
+        if self.sl is not None:
+           _op['sourcelocation'] = self.sl.spl_json()
+
         # Callout to allow a ExtensionOperator
         # to augment the JSON
         if hasattr(self, '_ex_op'):
@@ -282,13 +308,14 @@ class IPort(object):
         return _iport
 
 class OPort(object):
-    def __init__(self, name, operator, index, schema, width=None, partitioned=None):
+    def __init__(self, name, operator, index, schema, width=None, partitioned_keys=None):
         self.name = name
         self.operator = operator
         self.schema = _stream_schema(schema)
         self.index = index
         self.width = width
-        self.partitioned =  partitioned
+        self.partitioned = partitioned_keys is not None
+        self.partitioned_keys = partitioned_keys
 
         self.inputPorts = []
 
@@ -308,6 +335,8 @@ class OPort(object):
             _oport["width"] = int(self.width)
         if not self.partitioned is None:
             _oport["partitioned"] = self.partitioned
+        if self.partitioned_keys is not None:
+            _oport["partitionedKeys"] = self.partitioned_keys
         return _oport
 
 class Marker(_SPLInvocation):

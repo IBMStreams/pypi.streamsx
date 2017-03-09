@@ -14,7 +14,6 @@ except (ImportError, NameError):
 # Licensed Materials - Property of IBM
 # Copyright IBM Corp. 2015
 
-from streamsx.topology import logging_utils
 from streamsx.rest import VcapUtils
 import logging
 import tempfile
@@ -26,9 +25,9 @@ import threading
 import sys
 import enum
 import codecs
+import tempfile
 
-logging_utils.initialize_logging()
-logger = logging.getLogger('streamsx.topology.py_submit')
+logger = logging.getLogger('streamsx.topology.context')
 
 #
 # Submission of a python graph using the Java Application API
@@ -36,7 +35,7 @@ logger = logging.getLogger('streamsx.topology.py_submit')
 # SPL, the toolkit, the bundle and submits it to the relevant
 # environment
 #
-def submit(ctxtype, graph, config=None, username=None, password=None, log_level=logging.INFO):
+def submit(ctxtype, graph, config=None, username=None, password=None):
     """
     Submits a topology with the specified context type.
     
@@ -71,9 +70,13 @@ def submit(ctxtype, graph, config=None, username=None, password=None, log_level=
         log_level: The maximum logging level for log output.
         
     Returns:
-        An output stream of bytes if submitting with JUPYTER, otherwise returns None.
-    """    
-    logger.setLevel(log_level)
+        An output stream of bytes if submitting with JUPYTER, otherwise returns a dict containing information relevant
+        to the submission.
+    """
+
+    if not graph.graph.operators:
+        raise ValueError("Topology {0} does not contain any streams.".format(graph.graph.topology.name))
+
     context_submitter = _SubmitContextFactory(graph, config, username, password).get_submit_context(ctxtype)
     try:
         return context_submitter.submit()
@@ -93,6 +96,8 @@ class _BaseSubmitter(object):
             # the callers config
             self.config.update(config)
         self.app_topology = app_topology
+        self.fn = None
+        self.results_file = None
 
     def _config(self):
         "Return the submit configuration"
@@ -106,11 +111,7 @@ class _BaseSubmitter(object):
         self._add_python_info()
 
         # Create the json file containing the representation of the application
-        try:
-            self.fn = self._create_json_file(self._create_full_json())
-        except Exception:
-            logger.exception("Error generating SPL and creating JSON file.")
-            raise
+        self._create_json_file(self._create_full_json())
 
         tk_root = self._get_toolkit_root()
 
@@ -138,7 +139,7 @@ class _BaseSubmitter(object):
         logger.info("Generating SPL and submitting application.")
         process = subprocess.Popen(args, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0, env=self._get_java_env())
         try:
-            stderr_thread = threading.Thread(target=_print_process_stderr, args=([process, self.fn]))
+            stderr_thread = threading.Thread(target=_print_process_stderr, args=([process, self]))
             stderr_thread.daemon = True
             stderr_thread.start()
 
@@ -146,7 +147,23 @@ class _BaseSubmitter(object):
             stdout_thread.daemon = True
             stdout_thread.start()
             process.wait()
-            return process.returncode
+
+            results_json = None
+            try:
+                with open(self.results_file) as _file:
+                    results_json = json.loads(_file.read())
+            except IOError:
+                logger.exception("Error opening an reading from results file.")
+                raise
+            except json.JSONDecodeError:
+                logger.exception("Results file doesn't contain valid JSON")
+                raise
+            except:
+                raise
+
+            _delete_json(self)
+            results_json['return_code'] = process.returncode
+            return results_json
 
         except:
             logger.exception("Error starting java subprocess for submission")
@@ -173,17 +190,28 @@ class _BaseSubmitter(object):
         fj = dict()
         fj["deploy"] = self.config
         fj["graph"] = self.app_topology.generateSPLGraph()
+
+        _file = tempfile.NamedTemporaryFile(prefix="results", suffix=".json", mode="w+t", delete=False)
+        _file.close()
+        fj["submissionResultsFile"] = _file.name
+        self.results_file = _file.name
+        logger.debug("Results file created at " + _file.name)
+
         return fj
 
     def _create_json_file(self, fj):
-        if sys.hexversion < 0x03000000:
-            tf = tempfile.NamedTemporaryFile(mode="w+t", suffix=".json", prefix="splpytmp", delete=False)
-        else:
-            tf = tempfile.NamedTemporaryFile(mode="w+t", suffix=".json", encoding="UTF-8", prefix="splpytmp",
+        try:
+            if sys.hexversion < 0x03000000:
+                tf = tempfile.NamedTemporaryFile(mode="w+t", suffix=".json", prefix="splpytmp", delete=False)
+            else:
+                tf = tempfile.NamedTemporaryFile(mode="w+t", suffix=".json", encoding="UTF-8", prefix="splpytmp",
                                              delete=False)
-        tf.write(json.dumps(fj, sort_keys=True, indent=2, separators=(',', ': ')))
-        tf.close()
-        return tf.name
+            tf.write(json.dumps(fj, sort_keys=True, indent=2, separators=(',', ': ')))
+            tf.close()
+        except Exception:
+            logger.exception("Error generating SPL and creating JSON file.")
+            raise
+        self.fn = tf.name
 
 
     # There are two modes for execution.
@@ -232,6 +260,9 @@ class _JupyterSubmitter(_BaseSubmitter):
 
         cp = os.path.join(tk_root, "lib", "com.ibm.streamsx.topology.jar")
 
+        # Create the json file containing the representation of the application
+        self._create_json_file(self._create_full_json())
+
         streams_install = os.environ.get('STREAMS_INSTALL')
         # If there is no streams install, get java from JAVA_HOME and use the remote contexts.
         if streams_install is None:
@@ -250,7 +281,7 @@ class _JupyterSubmitter(_BaseSubmitter):
         args = [jvm, '-classpath', cp, submit_class, ContextTypes.STANDALONE, self.fn]
         process = subprocess.Popen(args, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         try:
-            stderr_thread = threading.Thread(target=_print_process_stderr, args=([process, self.fn]))
+            stderr_thread = threading.Thread(target=_print_process_stderr, args=([process, self]))
             stderr_thread.daemon = True
             stderr_thread.start()
 
@@ -272,6 +303,9 @@ class _RemoteBuildSubmitter(_BaseSubmitter):
 
         self._set_vcap()
         self._set_credentials()
+
+        # Clear the VCAP_SERVICES key in config, since env var will contain the content
+        self._config().pop(ConfigParams.VCAP_SERVICES, None)
 
         username = self.credentials['userid']
         password = self.credentials['password']
@@ -297,7 +331,7 @@ class _RemoteBuildSubmitter(_BaseSubmitter):
         # Give each view in the app the necessary information to connect to SWS.
         for view in app_topology.get_views():
             connection_info = {'username': username, 'password': password, 'rest_api_url': rest_api_url}
-            view.set_streams_context_config(connection_info)
+            view.set_streams_connection_config(connection_info)
 
     def _set_vcap(self):
         "Set self.vcap to the VCAP services, from env var or the config"
@@ -338,7 +372,7 @@ class _DistributedSubmitter(_BaseSubmitter):
 
         # Give each view in the app the necessary information to connect to SWS.
         for view in app_topology.get_views():
-            view.set_streams_context_config(
+            view.set_streams_connection_config(
                 {'username': username, 'password': password, 'rest_api_url': rest_api_url})
 
 
@@ -384,9 +418,10 @@ class _SubmitContextFactory(object):
 
 
 # Used to delete the JSON file after it is no longer needed.
-def _delete_json(fn):
-    if os.path.isfile(fn):
-        os.remove(fn)
+def _delete_json(submitter):
+    for fn in [submitter.fn, submitter.results_file]:
+        if os.path.isfile(fn):
+            os.remove(fn)
 
 
 # Used by a thread which polls a subprocess's stdout and writes it to stdout
@@ -413,7 +448,7 @@ def _print_process_stdout(process):
 
 # Used by a thread which polls a subprocess's stderr and writes it to stderr, until the sc compilation
 # has begun.
-def _print_process_stderr(process, fn):
+def _print_process_stderr(process, submitter):
     try:
         if sys.version_info.major == 2:
             serr = codecs.getwriter('utf8')(sys.stderr)
@@ -428,8 +463,6 @@ def _print_process_stderr(process, fn):
                 serr.write("\n")
             else:
                 print(line)
-            if "com.ibm.streamsx.topology.internal.streams.InvokeSc getToolkitPath" in line:
-                _delete_json(fn)
     except:
         process.stderr.close()
         logger.exception("Error reading from process stderr")
@@ -489,30 +522,75 @@ class ConfigParams(object):
     SERVICE_NAME = 'topology.service.name'
     FORCE_REMOTE_BUILD = 'topology.forceRemoteBuild'
     JOB_CONFIG = 'topology.jobConfigOverlays'
+    """
+    Key for a :py:class:`JobConfig` object representing a job configuration for a submission.
+    """
 
 class JobConfig(object):
     """
-    Job configuration
+    Job configuration.
+
+    `JobConfig` allows configuration of job that will result from
+    submission of a py:class:`Topology` (application).
+
+    A `JobConfig` is set in the `config` dictionary passed to :py:func:`~streamsx.topology.context.submit`
+    using the key :py:const:`~ConfigParams.JOB_CONFIG`. :py:meth:`~JobConfig.add` exists as a convenience
+    method to add it to a submission configuration.
+
+    Args:
+        job_name(str): The name that is assigned to the job. A job name must be unique within a Streasm instance
+            When set to `None` a system generated name is used.
+        job_group(str): The job group to use to control permissions for the submitted job.
+        preload(bool): Specifies whether to preload the job onto all resources in the instance, even if the job is
+            not currently needed on each. Preloading the job can improve PE restart performance if the PEs are
+            relocated to a new resource.
+        data_directory(str): Specifies the location of the optional data directory. The data directory is a path
+            within the cluster that is running the Streams instance.
+
+    Example::
+
+        # Submit a job with the name NewsIngester
+        cfg = {}
+        job_config = JobConfig(job_name='NewsIngester')
+        job_config.add(cfg)
+        context.submit('ANALYTICS_SERVICE', topo, cfg)
     """
-    def __init__(self, job_name=None, job_group=None, data_directory=None):
+    def __init__(self, job_name=None, job_group=None, preload=False, data_directory=None):
         self.job_name = job_name
         self.job_group = job_group
+        self.preload = preload
         self.data_directory = data_directory
 
+    def add(self, config):
+        """
+        Add this `JobConfig` into a submission configuration object.
+
+        Args:
+            config(dict): Submission configuration.
+
+        Returns:
+            dict: config.
+
+        """
+        config[ConfigParams.JOB_CONFIG] = self
+        return config
+
     def _add_overlays(self, config):
-       """
-       {"jobConfigOverlays":[{"jobConfig":{"jobName":"BluemixSubmitSample"},"deploymentConfig":{"fusionScheme":"legacy"}}]}
-       """
-       jco = {}
-       config["jobConfigOverlays"] = [jco]
-       jc = {}
+        """
+        Add this as a jobConfigOverlays JSON to config.
+        """
+        jco = {}
+        config["jobConfigOverlays"] = [jco]
+        jc = {}
 
-       if self.job_name is not None:
+        if self.job_name is not None:
             jc["jobName"] = self.job_name
-       if self.job_group is not None:
-           jc["jobGroup"] = self.job_group
-       if self.data_directory is not None:
-           jc["dataDirectory"] = self.data_directory
+        if self.job_group is not None:
+            jc["jobGroup"] = self.job_group
+        if self.data_directory is not None:
+            jc["dataDirectory"] = self.data_directory
+        if self.preload:
+            jc['preloadApplicationBundles'] = True
 
-       if jc:
-           jco["jobConfig"] = jc
+        if jc:
+            jco["jobConfig"] = jc

@@ -48,17 +48,34 @@ sub main::generate($$) {
    print "\n";
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
-   print '   funcop_(NULL)', "\n";
+   print '   funcop_(NULL),', "\n";
+   print '   pyInNames_(NULL)', "\n";
    print '{', "\n";
    print '    funcop_ = new SplpyFuncOp(this, "';
    print $pywrapfunc;
    print '");', "\n";
+    if ($pystyle eq 'dict') { 
+   print "\n";
+   print '     SplpyGIL lock;', "\n";
+   print '     pyInNames_ = streamsx::topology::Splpy::pyAttributeNames(', "\n";
+   print '               getInputPortAt(0));', "\n";
+    } 
+   print "\n";
    print '}', "\n";
    print "\n";
    print "\n";
    print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
+    if ($pystyle eq 'dict') { 
+   print "\n";
+   print '    if (pyInNames_) {', "\n";
+   print '      SplpyGIL lock;', "\n";
+   print '      Py_DECREF(pyInNames_);', "\n";
+   print '    }', "\n";
+    } 
+   print "\n";
+   print "\n";
    print '    delete funcop_;', "\n";
    print '}', "\n";
    print "\n";
@@ -91,18 +108,19 @@ sub main::generate($$) {
    print "\n";
    print '  value = pyDict;', "\n";
    print '  }', "\n";
-   print '  SPL::int32 spl_hash = streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value);', "\n";
-   print '  OPort0Type oTemptuple; //  (ip, spl_hash);', "\n";
-   print '  oTemptuple.assignFrom(tuple, false);', "\n";
-   print '  OPort0Type otuple(oTemptuple, spl_hash); //  (ip, spl_hash);', "\n";
+   print "\n";
+   print '  OPort0Type otuple;', "\n";
+   print '  otuple.assignFrom(ip, false);', "\n";
+   print '  otuple.set___spl_hash(streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value));', "\n";
    print "\n";
    }
    print "\n";
+   print "\n";
    if ($pystyle ne 'dict') {
    print "\n";
-   print '  SPL::int32 spl_hash = streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value);', "\n";
    print "\n";
-   print '  OPort0Type otuple(value, spl_hash);', "\n";
+   print '  OPort0Type otuple(value,', "\n";
+   print '       streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value));', "\n";
    }
    print "\n";
    print '  // submit tuple', "\n";

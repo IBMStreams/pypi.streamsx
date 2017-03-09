@@ -132,6 +132,43 @@ class SplpyGeneral {
        return PyBool_FromLong(value ? 1 : 0);
      }
 
+    /**
+     * Utility method to call an object
+     * passing in a tuple of arguments.
+     * 
+     * Steals the reference the the tuple.
+     */
+    static PyObject *pyCallObject(PyObject *pyclass, PyObject *args) {
+      PyObject *ret  = PyObject_CallObject(pyclass, args);
+      Py_DECREF(args);
+      if (ret == NULL) {
+         throw SplpyGeneral::pythonException("pyCallObject");
+      }
+
+      return ret;
+    }
+
+    /**
+     * Class object for streamsx.spl.types.Timestamp.
+     * First call is through setup to set the
+     * static variable.
+     * Subsequent calls pass null and receive
+     * the timestamp class.
+     */
+    static PyObject * timestampClass(PyObject *tsc) {
+        static PyObject * tsClass = tsc;
+        return tsClass;
+    }
+    /**
+     * streamsx.spl.types._get_timestamp_tuple
+     * Used to convert Python objects to SPL timestamps.
+     */
+    static PyObject * timestampGetter(PyObject *tsg) {
+        static PyObject * tsGetter = tsg;
+        return tsGetter;
+    }
+
+
     /*
      * Flush Python stderr and stdout.
     */
@@ -198,7 +235,9 @@ class SplpyGeneral {
     }
 
     /*
-     * Load a function, returning the reference to the function.
+     * Load a function or any callable in a module,
+     * returning the reference to the callable.
+     *
      * Caller must hold the GILState
      */
     static PyObject * loadFunction(const std::string & mn, const std::string & fn)
@@ -266,6 +305,330 @@ class SplpyGeneral {
         Py_DECREF(ret);
     }
 };
+
+    /*
+    ** Conversion of Python objects to SPL values.
+    */
+
+    /*
+    ** Convert to a SPL blob from a Python bytes object.
+    */
+    inline void pySplValueFromPyObject(SPL::blob & splv, PyObject * value) {
+      char * bytes = PyBytes_AsString(value);          
+      if (bytes == NULL) {
+         SPLAPPTRC(L_ERROR, "Python can't convert to SPL blob!", "python");
+         throw SplpyGeneral::pythonException("blob");
+      }
+      long int size = PyBytes_GET_SIZE(value);
+      splv.setData((const unsigned char *)bytes, size);
+    }
+
+    /*
+    ** Convert to a SPL rstring from a Python string object.
+    */
+    inline void pySplValueFromPyObject(SPL::rstring & splv, PyObject * value) {
+      if (pyRStringFromPyObject(splv, value) != 0) {
+         SPLAPPTRC(L_ERROR, "Python can't convert to UTF-8!", "python");
+         throw SplpyGeneral::pythonException("rstring");
+      }
+    }
+
+    inline void pySplValueFromPyObject(SPL::ustring & splv, PyObject * value) {
+         SPL::rstring rs;
+         pySplValueFromPyObject(rs, value);
+
+         splv = SPL::ustring::fromUTF8(rs);
+    }
+
+    inline SPL::rstring pyRstringFromPyObject(PyObject * value)
+    {
+        SPL::rstring rs;
+        pySplValueFromPyObject(rs, value);
+        return rs ;
+    }
+    inline SPL::ustring pyUstringFromPyObject(PyObject * value)
+    {
+        SPL::ustring us;
+        pySplValueFromPyObject(us, value);
+        return us ;
+    }
+
+    // signed integers
+    inline void pySplValueFromPyObject(SPL::int8 & splv, PyObject * value) {
+       splv = (SPL::int8) PyLong_AsLong(value);
+    }
+    inline void pySplValueFromPyObject(SPL::int16 & splv, PyObject * value) {
+       splv = (SPL::int16) PyLong_AsLong(value);
+    }
+    inline void pySplValueFromPyObject(SPL::int32 & splv, PyObject * value) {
+       splv = (SPL::int32) PyLong_AsLong(value);
+    }
+    inline void pySplValueFromPyObject(SPL::int64 & splv, PyObject * value) {
+       splv = (SPL::int64) PyLong_AsLong(value);
+    }
+
+    // unsigned integers
+    inline void pySplValueFromPyObject(SPL::uint8 & splv, PyObject * value) {
+       splv = (SPL::uint8) PyLong_AsUnsignedLong(value);
+    }
+    inline void pySplValueFromPyObject(SPL::uint16 & splv, PyObject * value) {
+       splv = (SPL::uint16) PyLong_AsUnsignedLong(value);
+    }
+    inline void pySplValueFromPyObject(SPL::uint32 & splv, PyObject * value) {
+       splv = (SPL::uint32) PyLong_AsUnsignedLong(value);
+    }
+    inline void pySplValueFromPyObject(SPL::uint64 & splv, PyObject * value) {
+       splv = (SPL::uint64) PyLong_AsUnsignedLong(value);
+    }
+
+    // boolean
+    inline void pySplValueFromPyObject(SPL::boolean & splv, PyObject * value) {
+       splv = PyObject_IsTrue(value);
+    }
+ 
+    // floats
+    inline void pySplValueFromPyObject(SPL::float32 & splv, PyObject * value) {
+       splv = (SPL::float32) PyFloat_AsDouble(value);
+    }
+    inline void pySplValueFromPyObject(SPL::float64 & splv, PyObject * value) {
+       splv = PyFloat_AsDouble(value);
+    }
+
+    /**
+     * Convert Python object to SPL timestamp:
+     *
+     * 1) Call streamsx.spl.types._get_timestamp_tuple to covert
+     *    Python object to tuple containing:
+     *      (seconds, nanoseconds, machine_id)
+     * 2) Extract values from each tuple element.
+     */
+    inline void pySplValueFromPyObject(SPL::timestamp & splv, PyObject *value) {
+        PyObject * args = PyTuple_New(1);
+        Py_INCREF(value);
+        PyTuple_SET_ITEM(args, 0, value);
+
+        PyObject *tst = SplpyGeneral::pyCallObject(
+                 SplpyGeneral::timestampGetter(NULL), args);
+        Py_DECREF(args);
+
+        splv.setSeconds(
+            (int64_t) PyLong_AsLong(PyTuple_GET_ITEM(tst, 0)));
+        splv.setNanoSeconds(
+            (uint32_t) PyLong_AsUnsignedLong(PyTuple_GET_ITEM(tst, 1)));
+        splv.setMachineId(
+            (int32_t) PyLong_AsLong(PyTuple_GET_ITEM(tst, 2)));
+    }
+
+    // complex
+    inline void pySplValueFromPyObject(SPL::complex32 & splv, PyObject * value) {
+        splv = SPL::complex32(
+          (SPL::float32) PyComplex_RealAsDouble(value),
+          (SPL::float32) PyComplex_ImagAsDouble(value)
+        );
+    }
+    inline void pySplValueFromPyObject(SPL::complex64 & splv, PyObject * value) {
+        splv = SPL::complex64(
+          (SPL::float64) PyComplex_RealAsDouble(value),
+          (SPL::float64) PyComplex_ImagAsDouble(value)
+        );
+    }
+
+    // SPL list from Python list
+    template <typename T>
+    inline void pySplValueFromPyObject(SPL::list<T> & l, PyObject *value) {
+        const Py_ssize_t size = PyList_Size(value);
+
+        for (Py_ssize_t i = 0; i < size; i++) {
+            T se;
+            l.add(se); // Add takes a copy of the value
+
+            PyObject * e = PyList_GET_ITEM(value, i);
+            pySplValueFromPyObject(l.at(i), e);
+        }
+    }
+ 
+    // SPL set from Python set
+    template <typename T>
+    inline void pySplValueFromPyObject(SPL::set<T> & s, PyObject *value) {
+        // validates that value is a Python set
+        const Py_ssize_t size = PySet_Size(value);
+
+        PyObject * iterator = PyObject_GetIter(value);
+        if (iterator == 0) {
+            throw SplpyGeneral::pythonException("iter(set)");
+        }
+        PyObject *item;
+        while ((item = PyIter_Next(iterator))) {
+            T se;
+            pySplValueFromPyObject(se, item);
+            Py_DECREF(item);
+            s.add(se);
+        }
+        Py_DECREF(iterator);
+    }
+
+    // SPL map from Python dictionary
+    template <typename K, typename V>
+    inline void pySplValueFromPyObject(SPL::map<K,V> & m, PyObject *value) {
+        PyObject *k,*v;
+        Py_ssize_t pos = 0;
+        while (PyDict_Next(value, &pos, &k, &v)) {
+           K sk;
+
+           // Set the SPL key
+           pySplValueFromPyObject(sk, k);
+
+           // map[] creates the value if it does not exist
+           V & sv = m[sk];
+ 
+           // Set the SPL value 
+           pySplValueFromPyObject(sv, v);
+        }
+    }
+
+    /**************************************************************/
+
+    /*
+    ** Conversion of SPL attributes or value to Python objects
+    */
+
+    /**
+     * Integer conversions.
+    */
+
+    inline PyObject * pySplValueToPyObject(const SPL::int32 & value) {
+      return PyLong_FromLong(value);
+    }
+    inline PyObject * pySplValueToPyObject(const SPL::int64 & value) {
+      return PyLong_FromLong(value);
+    }
+    inline PyObject * pySplValueToPyObject(const SPL::uint32 & value) {
+      return PyLong_FromUnsignedLong(value);
+    }
+    inline PyObject * pySplValueToPyObject(const SPL::uint64 & value) {
+      return PyLong_FromUnsignedLong(value);
+    }
+
+    /**
+     * Convert a SPL blob into a Python Memory view object.
+     */
+    inline PyObject * pySplValueToPyObject(const SPL::blob & value) {
+      long int sizeb = value.getSize();
+      const unsigned char * bytes = value.getData();
+
+#if PY_MAJOR_VERSION == 3
+      return PyMemoryView_FromMemory((char *) bytes, sizeb, PyBUF_READ);
+#else
+      return PyBuffer_FromMemory((void *)bytes, sizeb);
+#endif
+    }
+
+    /**
+     * Convert a SPL rstring into a Python Unicode string 
+     */
+    inline PyObject * pySplValueToPyObject(const SPL::rstring & value) {
+      long int sizeb = value.size();
+      const char * pybytes = value.data();
+
+      return PyUnicode_DecodeUTF8(pybytes, sizeb, NULL);
+    }
+    /**
+     * Convert a SPL ustring into a Python Unicode string 
+     */
+    inline PyObject * pySplValueToPyObject(const SPL::ustring & value) {
+      long int sizeb = value.length() * 2; // Need number of bytes
+      const char * pybytes =  (const char*) (value.getBuffer());
+
+      return PyUnicode_DecodeUTF16(pybytes, sizeb, NULL, NULL);
+    }
+
+    inline PyObject * pySplValueToPyObject(const SPL::complex32 & value) {
+       return PyComplex_FromDoubles(value.real(), value.imag());
+    }
+    inline PyObject * pySplValueToPyObject(const SPL::complex64 & value) {
+       return PyComplex_FromDoubles(value.real(), value.imag());
+    }
+
+    inline PyObject * pySplValueToPyObject(const SPL::boolean & value) {
+       PyObject * pyValue = SplpyGeneral::getBool(value);
+       return pyValue;
+    }
+    inline PyObject * pySplValueToPyObject(const SPL::float32 & value) {
+       return PyFloat_FromDouble(value);
+    }
+    inline PyObject * pySplValueToPyObject(const SPL::float64 & value) {
+       return PyFloat_FromDouble(value);
+    }
+
+    inline PyObject * pySplValueToPyObject(const SPL::timestamp & value) {
+        int32_t mid = value.getMachineId();
+        PyObject * pyTuple = PyTuple_New(mid == 0 ? 2 : 3);
+
+        PyTuple_SET_ITEM(pyTuple, 0, pySplValueToPyObject(value.getSeconds()));
+        PyTuple_SET_ITEM(pyTuple, 1, pySplValueToPyObject(value.getNanoseconds()));
+        if (mid != 0) {
+            PyTuple_SET_ITEM(pyTuple, 2, pySplValueToPyObject(mid));
+        }
+        return SplpyGeneral::pyCallObject(
+                 SplpyGeneral::timestampClass(NULL),
+                 pyTuple
+               );
+    }
+
+
+    /**
+     * Convert a PyObject to a PyObject by simply returning the value
+     * nb. that if object has it ref count decremented to 0 the 
+     * "copied" pointer is no longer valid
+     */
+    inline PyObject * pySplValueToPyObject(PyObject * object) {
+      return object;
+    }
+
+    /*
+    ** SPL List Conversion to Python list
+    */
+    template <typename T>
+    inline PyObject * pySplValueToPyObject(const SPL::list<T> & l) {
+        PyObject * pyList = PyList_New(l.size());
+        for (int i = 0; i < l.size(); i++) {
+            PyList_SET_ITEM(pyList, i, pySplValueToPyObject(l[i]));
+        }
+        return pyList;
+    }
+
+    /*
+    ** SPL Map Conversion to Python dict.
+    */
+    template <typename K, typename V>
+    inline PyObject * pySplValueToPyObject(const SPL::map<K,V> & m) {
+        PyObject * pyDict = PyDict_New();
+        for (typename std::tr1::unordered_map<K,V>::const_iterator it = m.begin();
+             it != m.end(); it++) {
+             PyObject *k = pySplValueToPyObject(it->first);
+             PyObject *v = pySplValueToPyObject(it->second);
+             PyDict_SetItem(pyDict, k, v);
+             Py_DECREF(k);
+             Py_DECREF(v);
+        }
+      
+        return pyDict;
+    }
+
+    /*
+    ** SPL Set Conversion to Python set
+    */
+    template <typename T>
+    inline PyObject * pySplValueToPyObject(const SPL::set<T> & s) {
+        PyObject * pySet = PySet_New(NULL);
+        for (typename std::tr1::unordered_set<T>::const_iterator it = s.begin();
+             it != s.end(); it++) {
+             PyObject * e = pySplValueToPyObject(*it);
+             PySet_Add(pySet, e);
+             Py_DECREF(e);
+        }
+        return pySet;
+    }
 
 }}
 

@@ -23,7 +23,7 @@ being distributed across multiple computing resources
 Topology
 ########
 
-A Topology declare a graph of *streams* and *operations* against
+A :py:class:`Topology` declares a graph of *streams* and *operations* against
 tuples (data items) on those streams.
 
 After being declared, a Topology is submitted to be compiled into
@@ -35,40 +35,110 @@ IBM Streams installation.
 
 The compilation step invokes the Streams compiler to produce a bundle.
 This effectively, from a Python point of view, produces a runnable
-version of the Python topology that includes generated application
+version of the Python topology that includes application
 specific Python C extensions to optimize performance.
 
 The Streams runtime distributes the application's operations
 across the resources available in the instance.
 
+.. note::
+    `Topology` represents a declaration of a streaming application that
+    will be executed by a Streams instance as a `job`, either using the Streaming Analytics
+    service on IBM Bluemix cloud platform or an on-premises distributed instance.
+    `Topology` does not represent a running application, so an instance of `Stream` class does not contain
+    the tuples, it is only a declaration of a stream.
+
 Stream
 ######
 
-A stream is a DEFINITION.
+A :py:class:`Stream` can be an infinite sequence of tuples, such as a stream for a traffic flow sensor.
+Alternatively, a stream can be finite, such as a stream that is created from the contents of a file.
+When a streams processing application contains infinite streams, the application runs continuously without ending.
 
 A stream has a schema that defines the type of each tuple on the stream.
 The schema for a Python Topology is either:
 
-* Untyped - A tuple may be any Python object. This is the default.
-* String - Each tuple is a Unicode string.
-* Binary - Each tuple is a blob.
-* Json - Each tuple is a Python dict that can be expressed as a JSON object.
+* :py:const:`~streamsx.topology.schema.CommonSchema.Python` - A tuple may be any Python object. This is the default.
+* :py:const:`~streamsx.topology.schema.CommonSchema.String` - Each tuple is a Unicode string.
+* :py:const:`~streamsx.topology.schema.CommonSchema.Binary` - Each tuple is a blob.
+* :py:const:`~streamsx.topology.schema.CommonSchema.Json` - Each tuple is a Python dict that can be expressed as a JSON object.
 * Structured - A stream that is an ordered list of attributes, with each attribute having a fixed type (e.g. float64 or int32) and a name.
 
-Stream operations
+Stream processing
 #################
+
+Callables
+=========
 
 A stream is processed to produce zero or more transformed streams,
 such as filtering a stream to drop unwanted tuples, producing a stream
 that only contains the required tuples.
 
-An operation on a stream can be:
+Streaming processing is per tuple based, as each tuple is submitted to a stream consuming operators
+have their processing logic invoked for that tuple.
 
+A functional operator is declared by methods on :py:class:`Stream` such as :py:meth:`~Stream.map` which
+maps the tuples on its input stream to tuples on its output stream. `Stream` uses a functional model
+where each stream processing operator is defined in terms a Python callable that is invoked passing
+input tuples and whose return defines what output tuples are submitted for downstream processing.
 
-* A Python lambda function. The lambda is called for each tuple on a stream, passing the tuple.
-* A Python function. The function is called for each tuple on a stream, passing the tuple.
-* An instance of a Python callable class. The instance is called for each tuple on the stream, passing the tuple.  Use of an instance allows the operation to be stateful by maintaining state in instance attributes across invocations.
-* An invocation of an SPL operator.
+The Python callable used for functional processing in this API may be:
+
+* A Python lambda function.
+* A Python function.
+* An instance of a Python callable class.
+
+For example a stream ``words`` containing only string objects can be
+processed by a :py:meth:`~Stream.filter` using a lambda function::
+
+    # Filter the stream so it only contains words starting with py
+    pywords = words.filter(lambda word : tuple.startswith('py'))
+
+Stateful operations
+===================
+
+Use of a class instance allows the operation to be stateful by maintaining state in instance
+attributes across invocations.
+
+.. note::
+    For future compatibility instances should ensure that the object's
+    state can be pickled. See https://docs.python.org/3.5/library/pickle.html#handling-stateful-objects
+
+Initialization and shutdown
+===========================
+
+Execution of a class instance effectively run in a context manager so that an instance's ``__enter__``
+method is called when the processing element containing the instance  is initialized
+and its ``__exit__`` method called when the processing element is stopped. To take advantage of this
+the class must define both ``__enter__`` and ``__exit__`` methods.
+
+.. note::
+    Since an instance of a class is passed to methods such as
+    :py:meth:`~Stream.map` ``__init__`` is only called when the topology is `declared`, not at runtime.
+    Initialization at runtime, such as opening connections, occurs through the ``__enter__`` method.
+
+Example of using ``__enter__`` to create custom metrics::
+
+    import streamsx.ec as ec
+
+    class Sentiment(object):
+        def __init__(self):
+            pass
+
+        def __enter__(self):
+            self.positive_metric = ec.CustomMetric(self, "positiveSentiment")
+            self.negative_metric = ec.CustomMetric(self, "negativeSentiment")
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            pass
+
+SPL operators
+=============
+
+In addition an application declared by `Topology` can include stream processing defined by SPL primitive or
+composite operators. This allows reuse of adapters and analytics provided by IBM Streams,
+open source and third-party SPL toolkits.
+
 """
 
 from __future__ import unicode_literals
@@ -91,6 +161,7 @@ import json
 import threading
 import queue
 import sys
+import os
 import time
 import inspect
 import logging
@@ -98,22 +169,118 @@ from enum import Enum
 
 logger = logging.getLogger('streamsx.topology')
 
+
+def _source_info():
+    """
+    Get information from the user's code (two frames up)
+    to leave breadcrumbs for file, line, class and function.
+    """
+    ofi = inspect.getouterframes(inspect.currentframe())[2]
+    try:
+        calling_class = ofi[0].f_locals['self'].__class__
+    except KeyError:
+        calling_class = None
+    # Tuple of file,line,calling_class,function_name
+    return ofi[1], ofi[2], calling_class, ofi[3]
+ 
+class _SourceLocation(object):
+    """
+    Saved source info to eventually create an SPL
+    annotation with the info in JSON form.
+    This object's JSON is put into the JSON as "sourcelocation"
+    """
+    def __init__(self, source_info, method=None):
+        self.source_info = source_info
+        self.method = method
+
+    def spl_json(self):
+        sl = {}
+        sl['file'] = self.source_info[0]
+        sl['line'] = self.source_info[1]
+        if self.source_info[2] is not None:
+            sl['class'] = self.source_info[2].__name__
+        sl['method'] = self.source_info[3]
+        if self.method is not None:
+            sl['topology.method'] = self.method
+        return sl
+
+class Routing(Enum):
+    """
+    Defines how tuples are routed to channels in a
+    parallel region.
+
+    A parallel region is started by :py:meth:`~Stream.parallel`
+    and ended with :py:meth:`~Stream.end_parallel` or :py:meth:`~Stream.for_each`.
+    """
+    ROUND_ROBIN=1
+    """
+    Tuples are routed to maintain an even distribution of tuples to the channels.
+
+    Each tuple is only sent to a single channel.
+    """
+    KEY_PARTITIONED=2
+    HASH_PARTITIONED=3
+    """
+    Tuples are routed based upon a hash value so that tuples with the same hash
+    and thus same value are always routed to the same channel. When a hash function is
+    specified it is passed the tuple and the return value is the hash. When no hash
+    function is specified then `hash(tuple)` is used.
+
+    Each tuple is only sent to a single channel.
+
+    .. warning:: A consistent hash function is required to guarantee that a tuple
+        with the same value is always routed to the same channel. `hash()` is not
+        consistent in that for types str, bytes and datetime objects are “salted”
+        with an unpredictable random value (Python 3.5). Thus if the processing element is
+        restarted channel routing for a hash based upon a str, bytes or datetime will change.
+        In addition code executing in the channels can see a different
+        hash value to other channels and the execution that routed the tuple due to
+        being in different processing elements.
+    """
+
 class Topology(object):
     """The Topology class is used to define data sources, and is passed as a parameter when submitting an application.
        Topology keeps track of all sources, sinks, and data operations within your application.
 
+       Submission of a Topology results in a Streams application that has
+       the name `namespace::name`.
+
+       Arguments:
+           name(str): Name of the topology. Defaults to a name dervied
+              from the calling evironment if it can be determined, otherwise
+              a random name.
+           namespace(str): Namespace of the topology. Defaults to a name dervied
+              from the calling evironment if it can be determined, otherwise
+              a random name.
+
        Instance variables:
-           include_packages: Set of Python package names to be included in the built application. 
+           include_packages(set): Python package names to be included in the built application. 
 
-           exclude_packages: Set of Python package names to be excluded from the built application.
-           When compiling the application using Anaconda this set is pre-loaded with Python pacakges from the 
-           Anaconda pre-loaded  set of applications.
+           exclude_packages(set): Python top-level package names to be excluded from the built application. Excluding a top-level packages excludes all sub-modules at any level in the package, e.g. `sound` excludes `sound.effects.echo`. Only the top-level package can be defined, e.g. `sound` rather than `sound.filters`. Behavior when adding a module within a package is undefined.
+           When compiling the application using Anaconda this set is pre-loaded with Python packages from the Anaconda pre-loaded set.
 
-           package names in the include_packages set take precedence over package namers in the exclude_pacakges set.
+           Package names in `include_packages` take precedence over package names in `exclude_packages`.
     """  
 
-    def __init__(self, name, files=None):
-        self.name = name
+    def __init__(self, name=None, namespace=None, files=None):
+        if name is None or namespace is None:
+            # Take the name of the calling function
+            # If it starts with __ and is in a class then use the class name
+            # Take the namespace from the class's module if executing from
+            # a class otherwise use the name
+            si = _source_info()
+            if name is None:
+                name = si[3]
+                if name.startswith('__'):
+                    if si[2] is not None:
+                        name = si[2].__name__
+                    
+            if namespace is None:
+                if si[2] is not None:
+                    namespace = si[2].__module__
+                elif si[0] is not None:
+                    namespace = os.path.splitext(os.path.basename(si[0]))[0]
+        
         if sys.version_info.major == 3:
           self.opnamespace = "com.ibm.streamsx.topology.functional.python"
         elif sys.version_info.major == 2 and sys.version_info.minor == 7:
@@ -125,32 +292,48 @@ class Topology(object):
         if "Anaconda" in sys.version:
             import streamsx.topology.condapkgs
             self.exclude_packages.update(streamsx.topology.condapkgs._CONDA_PACKAGES)
-        self.graph = graph.SPLGraph(self, name)
+        self.graph = graph.SPLGraph(self, name, namespace)
         if files is not None:
             self.files = files
         else:
             self.files = []
 
+    @property
+    def name(self):
+        """
+        Return the name of the topology.
+        Returns:str:Name of the topology.
+        """
+        return self.graph.name
+    @property
+    def namespace(self):
+        """
+        Return the namespace of the topology.
+        Returns:str:Namespace of the topology.
+        """
+        return self.graph.namespace
+
     def source(self, func, name=None):
         """
-        Fetches information from an external system and presents that information as a stream.
+        Declare a source stream that introduces tuples into the application.
+
+        Typically used to create a stream of tuple from an external source,
+        such as a sensor or reading from an external system.
+
         Tuples are obtained from an iterator obtained from the passed iterable
         or callable that returns an iterable.
-        Each tuple that is not None from the iterator returned
-        from iter(func()) is present on the returned stream.
+
+        Each tuple that is not None from the iterator is present on the returned stream.
+
+        Each tuple is a Python object and must be picklable to allow execution of the application
+        to be distributed across available resources in the Streams instance.
         
         Args:
-            func: An iterable or a zero-argument callable that returns an iterable of tuples.
-                The callable must be either be an iterable object, a function, a lambda function
-                or an instance of a callable class that implements the method `__call__(self)` and be picklable.
-
-                Using a callable class allows state information such as user-defined parameters to be stored during class
-                initialization and utilized when the instance is called.
-
-                A tuple is represented as a Python object that must be picklable.
+            func(callable): An iterable or a zero-argument callable that returns an iterable of tuples.
+            name(str): Name of the stream, defaults to a generated name.
 
         Returns:
-            Stream: A stream whose tuples are the result of the output obtained by invoking the provided callable or iterable.
+            Stream: A stream whose tuples are the result of the iterable obtained from `func`.
         """
         if inspect.isroutine(func):
              pass
@@ -159,7 +342,8 @@ class Topology(object):
         else:
              func = streamsx.topology.functions._IterableInstance(func)
         
-        op = self.graph.addOperator(self.opnamespace+"::PyFunctionSource", func, name=name)
+        sl = _SourceLocation(_source_info(), "source")
+        op = self.graph.addOperator(self.opnamespace+"::PyFunctionSource", func, name=name, sl=sl)
         oport = op.addOutputPort()
         return Stream(self, oport)
 
@@ -170,26 +354,29 @@ class Topology(object):
         Streams applications to subscribe to it. A subscriber matches a
         publisher if the topic and schema match.
 
-        By default a stream is subscribed as Python objects (schema.CommonSchema.Python)
+        By default a stream is subscribed as :py:const:`~streamsx.topology.schema.CommonSchema.Python` objects
         which connects to streams published to topic by Python Streams applications.
 
-        JSON streams are subscribed to using schema.CommonSchema.Json. 
+        JSON streams are subscribed to using schema :py:const:`~streamsx.topology.schema.CommonSchema.Json`.
         Each tuple on the returned stream will be a Python dictionary
-        object created by json.loads(tuple).
-        Any publishing Streams application may have been implemented in any language.
+        object created by ``json.loads(tuple)``.
+        A Streams application publishing JSON streams may have been implemented in any programming language
+        supported by Streams.
        
-        String streams are subscribed to using schema.CommonSchema.String .
+        String streams are subscribed to using schema :py:const:`~streamsx.topology.schema.CommonSchema.String`.
         Each tuple on the returned stream will be a Python string object.
-        Any publishing Streams application may have been implemented in any language.
+        A Streams application publishing JSON streams may have been implemented in any programming language
+        supported by Streams.
 
         Args:
             topic(str): Topic to subscribe to.
-            schema(schema.StreamSchema): schema to subscribe to. Defaults to schema.CommonSchema.Python representing Python
-                    objects.
+            schema(~streamsx.topology.schema.StreamSchema): schema to subscribe to.
+
         Returns:
             Stream:  A stream whose tuples have been published to the topic by other Streams applications.
         """
-        op = self.graph.addOperator(kind="com.ibm.streamsx.topology.topic::Subscribe")
+        sl = _SourceLocation(_source_info(), "subscribe")
+        op = self.graph.addOperator(kind="com.ibm.streamsx.topology.topic::Subscribe", sl=sl)
         oport = op.addOutputPort(schema=schema)
         subscribeParams = {'topic': topic, 'streamType': schema}
         op.setParameters(subscribeParams)
@@ -199,8 +386,8 @@ class Topology(object):
 class Stream(object):
     """
     The Stream class is the primary abstraction within a streaming application. It represents a potentially infinite 
-    series of tuples which can be operated upon to produce another stream, as in the case of Stream.map(), or 
-    terminate a stream, as in the case of Stream.sink().
+    series of tuples which can be operated upon to produce another stream, as in the case of :py:meth:`map`, or
+    terminate a stream, as in the case of :py:meth:`for_each`.
     """
     def __init__(self, topology, oport):
         self.topology = topology
@@ -209,54 +396,38 @@ class Stream(object):
     def for_each(self, func, name=None):
         """
         Sends information as a stream to an external system.
-        Takes a user provided callable that does not return a value.
-        For each tuple that is on the stream `func(tuple)` is called.
+
+        For each tuple on the stream ``func(tuple)`` is called.
         
         Args:
             func: A callable that takes a single parameter for the tuple and returns None.
-            The callable must be one of: 
-            * a function 
-            * a lambda function
-            * an instance of a callable class that implements 
-              the method `__call__(self, tuple)` and be picklable.
-            Using a callable class allows state information such as user-defined parameters to be stored during class 
-            initialization and utilized when the instance is called.
-            The callable is invoked for each incoming tuple.
         Returns:
             None
         """
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionSink", func, name=name)
+        sl = _SourceLocation(_source_info(), "for_each")
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionSink", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport)
 
     def sink(self, func, name=None):
         """
-        Equivalent to calling the for_each() function
+        Equivalent to calling :py:meth:`for_each`.
         """
         return self.for_each(func, name)
 
     def filter(self, func, name=None):
         """
-        Filters tuples from a stream using the supplied callable `func`.
-        For each tuple on the stream the callable is called passing
-        the tuple, if the callable return evalulates to true the
-        tuple will be present on the returned stream, otherwise
-        the tuple is filtered out.
+        Filters tuples from this stream using the supplied callable `func`.
+
+        For each tuple on the stream ``func(tuple)`` is called, if the return evaluates to ``True`` the
+        tuple will be present on the returned stream, otherwise the tuple is filtered out.
         
         Args:
-            func: A callable that takes a single parameter for the tuple, and returns True or False.
-            If True, the tuple is included on the returned stream.  If False, the tuple is filtered out.
-            The callable must be one of:
-            * a function
-            * a lambda function
-            * an instance of a callable class that implements 
-              the method `__call__(self, tuple)` and be picklable.
-            Using a callable class allows state information such as user-defined parameters to be stored during class 
-            initialization and utilized when the instance is called.
-            The callable is invoked for each incoming tuple.
+            func: Filter callable that takes a single parameter for the tuple.
         Returns:
-            A Stream containing tuples that have not been filtered out.
+            Stream: A Stream containing tuples that have not been filtered out.
         """
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionFilter", func, name=name)
+        sl = _SourceLocation(_source_info(), "filter")
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionFilter", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
         return Stream(self.topology, oport)
@@ -289,59 +460,49 @@ class Stream(object):
 
     def map(self, func, name=None):
         """
-        Maps each tuple from this stream into 0 or 1 tuples using the supplied callable `func`.
-        For each tuple on this stream, the returned stream will contain a tuple
-        that is the result of the callable when the return is not None.
-        If the callable returns None then no tuple is submitted to the returned 
-        stream.
+        Maps each tuple from this stream into 0 or 1 tuples.
+
+        For each tuple on this stream ``func(tuple)`` is called.
+        If the result is not `None` then the result will be submitted
+        as a tuple on the returned stream. If the result is `None` then
+        no tuple submission will occur.
         
         Args:
-            func: A callable that takes a single parameter for the tuple, and returns a tuple or None.
-                The callable must be either a function, a lambda function,
-                an instance of a callable class that implements the method `__call__(self, tuple)` and be picklable.
+            func: A callable that takes a single parameter for the tuple.
 
-                Using a callable class allows state information such as user-defined parameters to be stored during class
-                initialization and utilized when the instance is called.
-
-                The callable is invoked for each incoming tuple.
         Returns:
-            Stream: A stream containing tuples mapped by func.
+            Stream: A stream containing tuples mapped by `func`.
         """
         return self._map(func, schema=schema.CommonSchema.Python, name=name)
 
     def transform(self, func, name=None):
         """
-        Equivalent to calling the map() function
+        Equivalent to calling :py:meth:`map`.
         """
         return self.map(func, name)
              
     def flat_map(self, func, name=None):
         """
-        Transforms each tuple from this stream into 0 or more tuples using the supplied callable `func`. 
-        For each tuple on this stream, the returned stream will contain all non-None tuples from
-        the iterable.
-        Tuples will be added to the returned stream in the order the iterable
-        returns them.
-        If the return is None or an empty iterable then no tuples are added to
+        Maps and flatterns each tuple from this stream into 0 or more tuples.
+
+
+        For each tuple on this stream ``func(tuple)`` is called.
+        If the result is not `None` then the the result is iterated over
+        with each value from the iterator that is not None will be submitted
+         to the return stream.
+
+        If the result is `None` or an empty iterable then no tuples are submitted to
         the returned stream.
         
         Args:
-            func: A callable that takes a single parameter for the tuple, and returns an iterable of tuples or None.
-            The callable must return an iterable or None, otherwise a TypeError is raised.
-            The callable must be either
-            * a function
-            * a lambda function
-            * an instance of a callable class that implements 
-              the method `__call__(self, tuple)` and be picklable.
-            Using a callable class allows state information such as user-defined parameters to be stored during class 
-            initialization and utilized when the instance is called.
-            The callable is invoked for each incoming tuple.
+            func: A callable that takes a single parameter for the tuple.
         Returns:
-            A Stream containing transformed tuples.
+            Stream: A Stream containing transformed tuples.
         Raises:
             TypeError: if `func` does not return an iterator nor None
         """     
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionMultiTransform", func, name=name)
+        sl = _SourceLocation(_source_info(), "flat_map")
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionMultiTransform", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
@@ -354,10 +515,10 @@ class Stream(object):
 
     def isolate(self):
         """
-        Guarantees that the upstream operation will run in a separate process from the downstream operation
+        Guarantees that the upstream operation will run in a separate processing element from the downstream operation
 
         Returns:
-            Stream
+            Stream: Stream whose subsequent immediate processing will occur in a separate processing element.
         """
         op = self.topology.graph.addOperator("$Isolate$")
         # does the addOperator above need the packages
@@ -395,7 +556,7 @@ class Stream(object):
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
     
-    def parallel(self, width, routing=None, func=None):
+    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None):
         """
         Parallelizes the stream into `width` parallel channels.
         Tuples are routed to parallel channels such that an even distribution is maintained.
@@ -404,7 +565,7 @@ class Stream(object):
         from one another.
         
         parallel() will only parallelize the stream operations performed after the call to parallel() and 
-        before the call to end_parallel().
+        before the call to :py:meth:`~Stream.end_parallel`.
         
         Parallel regions aren't required to have an output stream, and thus may be used as sinks.
         In other words, a parallel sink is created by calling parallel() and creating a sink operation.
@@ -418,50 +579,58 @@ class Stream(object):
         
         Args:
             width (int): Degree of parallelism.
-            routing: denotes what type of tuple routing to use.
-                ROUND_ROBIN: delivers tuples in round robin fashion to downstream operators (the default when
-                no routing is specified).
-                HASH_PARTIONED: delivers to downstream operators based on the hash of the tuples being sent
-                or if a function is provided the function will be called to provide the hash
-            func: Optional function called when HASH_PARTIONED routing is specified.  The function provides an
-                int32 value to be used as the hash that determines the tuple routing to downstream operators
+            routing(Routing): denotes what type of tuple routing to use.
+            func: Optional function called when :py:const:`Routing.HASH_PARTITIONED` routing is specified.
+                The function provides an integer value to be used as the hash that determines
+                the tuple channel routing.
 
         Returns:
-            Stream
+            Stream: A stream for which subsequent transformations will be executed in parallel.
 
         """
-        if (routing == None or routing == Routing.ROUND_ROBIN) :
+        if routing == None or routing == Routing.ROUND_ROBIN:
             op2 = self.topology.graph.addOperator("$Parallel$")
             op2.addInputPort(outputPort=self.oport)
             oport = op2.addOutputPort(width)
             return Stream(self.topology, oport)
-        elif(routing == Routing.HASH_PARTITIONED ) :
-            if (func is None) :
-                func = hash   
-            hash_adder = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionHashAdder", func)
-            hash_schema = self.oport.schema.extend(schema.StreamSchema("tuple<int32 __spl_hash>"))
-            hash_adder.addInputPort(outputPort=self.oport)
-            hash_adder_oport = hash_adder.addOutputPort(schema=hash_schema)
+        elif routing == Routing.HASH_PARTITIONED:
 
+            if (func is None):
+                if self.oport.schema == schema.CommonSchema.String:
+                    keys = ['string']
+                    parallel_input = self.oport
+                elif self.oport.schema == schema.CommonSchema.Python:
+                    func = hash
+                else:
+                    raise NotImplementedError("HASH_PARTITIONED for schema {0} requires a hash function.".format(self.oport.schema))
+
+            if func is not None:
+                keys = ['__spl_hash']
+                hash_adder = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionHashAdder", func)
+                hash_schema = self.oport.schema.extend(schema.StreamSchema("tuple<int64 __spl_hash>"))
+                hash_adder.addInputPort(outputPort=self.oport)
+                parallel_input = hash_adder.addOutputPort(schema=hash_schema)
 
             parallel_op = self.topology.graph.addOperator("$Parallel$")
-            parallel_op.addInputPort(outputPort=hash_adder_oport)
-            parallel_op_port = parallel_op.addOutputPort(oWidth=width, schema=hash_schema, partitioned=True)
+            parallel_op.addInputPort(outputPort=parallel_input)
+            parallel_op_port = parallel_op.addOutputPort(oWidth=width, schema=parallel_input.schema, partitioned_keys=keys)
 
-            # use the Functor passthru operator to effectively remove the hash attribute by removing it from output port schema 
-            hrop = self.topology.graph.addPassThruOperator()
-            hrop.addInputPort(outputPort=parallel_op_port)
-            hrOport = hrop.addOutputPort(schema=self.oport.schema)
-            return Stream(self.topology, hrOport)
+            if func is not None:
+                # use the Functor passthru operator to remove the hash attribute by removing it from output port schema
+                hrop = self.topology.graph.addPassThruOperator()
+                hrop.addInputPort(outputPort=parallel_op_port)
+                parallel_op_port = hrop.addOutputPort(schema=self.oport.schema)
+
+            return Stream(self.topology, parallel_op_port)
         else :
             raise TypeError("Invalid routing type supplied to the parallel operator")    
 
     def end_parallel(self):
         """
-        Ends a parallel region by merging the channels into a single stream
+        Ends a parallel region by merging the channels into a single stream.
 
         Returns:
-            Stream: Stream for which subsequent transformations are no longer parallelized
+            Stream: Stream for which subsequent transformations are no longer parallelized.
         """
         lastOp = self.topology.graph.getLastOperator()
         outport = self.oport
@@ -536,8 +705,9 @@ class Stream(object):
             self._map(streamsx.topology.functions.identity,schema=schema).publish(topic, schema=schema)
             return None
 
+        sl = _SourceLocation(_source_info(), "publish")
         publish_arams = {'topic': topic}
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params=publish_arams)
+        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params=publish_arams, sl=sl)
         op.addInputPort(outputPort=self.oport)
 
     def autonomous(self):
@@ -547,15 +717,14 @@ class Stream(object):
         where any checkpointing of operator state is autonomous (independent)
         of other operators.
         
-        This function may be used to end a consistent region by starting an
+        This method may be used to end a consistent region by starting an
         autonomous region. This may be called even if this stream is in
         an autonomous region.
 
         Autonomous is not applicable when a topology is submitted
         to a STANDALONE contexts and will be ignored.
 
-        Supported since v1.5
-
+        .. versionadded:: 1.6
 
         Returns:
             Stream: Stream whose subsequent downstream processing is in an autonomous region.
@@ -565,11 +734,20 @@ class Stream(object):
         oport = op.addOutputPort(schema=self.oport.schema)
         return Stream(self.topology, oport)
 
-class Routing(Enum):
-    ROUND_ROBIN=1
-    KEY_PARTITIONED=2
-    HASH_PARTITIONED=3    
+    def as_string(self):
+        """
+        Declares a stream converting each tuple on this stream
+        into a string using `str(tuple)`.
 
+        The stream is typed as a stream of strings.
+
+        .. versionadded:: 1.6
+
+        Returns:
+            Stream: Stream containing the string representations of tuples on this stream.
+
+        """
+        return self._map(streamsx.topology.functions.identity, schema.CommonSchema.String)
 
 class View(object):
     """
@@ -578,25 +756,25 @@ class View(object):
     def __init__(self, name):
         self.name = name
 
-        self.streams_context = None
+        self.streams_connection = None
         self.view_object = None
-        self.streams_context_config = {'username': '', 'password': '', 'rest_api_url': ''}
+        self.streams_connection_config = {'username': '', 'password': '', 'rest_api_url': ''}
 
         self.is_rest_initialized = False
 
     def initialize_rest(self):
         if not self.is_rest_initialized:
-            if self.streams_context_config['username'] is None or \
-               self.streams_context_config['password'] is None or \
-               self.streams_context_config['rest_api_url'] is None:
+            if self.streams_connection_config['username'] is None or \
+               self.streams_connection_config['password'] is None or \
+               self.streams_connection_config['rest_api_url'] is None:
                 raise ValueError(
                     "WARNING: A username, a password, and a rest url must be present in order to access view data")
             from streamsx import rest
-            rc = rest.StreamsConnection(self.streams_context_config['username'],
-                                     self.streams_context_config['password'],
-                                     self.streams_context_config['rest_api_url'])
+            rc = rest.StreamsConnection(self.streams_connection_config['username'],
+                                        self.streams_connection_config['password'],
+                                        self.streams_connection_config['rest_api_url'])
             self.is_rest_initialized = True
-            self.set_streams_context(rc)
+            self.set_streams_connection(rc)
 
     def stop_data_fetch(self):
         self.view_object.stop_data_fetch()
@@ -604,14 +782,13 @@ class View(object):
     def start_data_fetch(self):
         self.initialize_rest()
         try:
-            self.view_object = self.streams_context.get_view(self.name)
+            self.view_object = self.streams_connection.get_view(self.name)
         except:
-            logger.exception("Could not view: " + self.name)
             raise
         return self.view_object.start_data_fetch()
 
-    def set_streams_context_config(self, conf):
-        self.streams_context_config = conf
+    def set_streams_connection_config(self, conf):
+        self.streams_connection_config = conf
 
-    def set_streams_context(self, sc):
-        self.streams_context = sc
+    def set_streams_connection(self, sc):
+        self.streams_connection = sc

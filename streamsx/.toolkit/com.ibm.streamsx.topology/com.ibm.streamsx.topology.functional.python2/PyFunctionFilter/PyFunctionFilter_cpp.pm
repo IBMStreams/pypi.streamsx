@@ -67,11 +67,14 @@ sub main::generate($$) {
    print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
-   print '    {', "\n";
-   print '    SplpyGIL lock;', "\n";
-   print '    if (pyInNames_)', "\n";
+    if ($pystyle eq 'dict') { 
+   print "\n";
+   print '    if (pyInNames_) {', "\n";
+   print '      SplpyGIL lock;', "\n";
    print '      Py_DECREF(pyInNames_);', "\n";
    print '    }', "\n";
+    } 
+   print "\n";
    print "\n";
    print '    delete funcop_;', "\n";
    print '}', "\n";

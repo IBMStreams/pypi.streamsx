@@ -1,11 +1,12 @@
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2016
+# Copyright IBM Corp. 2016,2017
 import requests
 import os
 import json
 import logging
+import streamsx.st as st
 
-from .rest_primitives import Domain, Instance, Installation, Resource, StreamsRestClient
+from .rest_primitives import Domain, Instance, Installation, Resource, StreamsRestClient, StreamingAnalyticsService,  _exact_resource
 from .rest_errors import ViewNotFoundError
 from pprint import pformat
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -16,7 +17,7 @@ logger = logging.getLogger('streamsx.rest')
 
 
 class StreamsConnection:
-    """Creates a connection to a  running Streams installation and exposes methods to retrieve the state of that instance.
+    """Creates a connection to a running Streams instance and exposes methods to retrieve the state of that instance.
 
     Streams maintains information regarding the state of its resources. For example, these resources could include the
     currently running Jobs, Views, PEs, Operators, and Domains. The StreamsConnection provides methods to retrieve that
@@ -32,7 +33,7 @@ class StreamsConnection:
         >>> print("There are " + jobs_count + " jobs across all instances.")
 
     """
-    def __init__(self, username=None, password=None, resource_url=None, config=None):
+    def __init__(self, username=None, password=None, resource_url=None, config=None, instance_id=None):
         """
         :param username: The username of an authorized Streams user.
         :type username: str.
@@ -46,53 +47,83 @@ class StreamsConnection:
         """
         # manually specify username, password, and resource_url
         if username and password and resource_url:
-            self.rest_client = StreamsRestClient(username, password, resource_url)
-            self.resource_url = resource_url
+            self._setup_distributed(instance_id, username, password, resource_url)
 
         # Connect to Bluemix service using VCAP
         elif config:
             vcap_services = VcapUtils.get_vcap_services(config)
-            credentials = VcapUtils.get_credentials(config, vcap_services)
+            self.credentials = VcapUtils.get_credentials(config, vcap_services)
+            self._analytics_service = True
 
             # Obtain the streams SWS REST URL
-            rest_api_url = VcapUtils.get_rest_api_url_from_creds(credentials)
+            rest_api_url = VcapUtils.get_rest_api_url_from_creds(self.credentials)
 
             # Create rest connection to remote Bluemix SWS
-            self.rest_client = StreamsRestClient(credentials['userid'], credentials['password'], rest_api_url)
+            self.rest_client = StreamsRestClient(self.credentials['userid'], self.credentials['password'], rest_api_url)
             self.resource_url = rest_api_url
+            # Get the instance id from one of the URL paths
+            self.instance_id = self.credentials['jobs_path'].split('/service_instances/',1)[1].split('/',1)[0]
+
+        elif username and password and st._has_local_install:
+            self._setup_distributed(instance_id, username, password, st.get_rest_api())
+
+        elif st._has_local_install:
+            # Assume quickstart
+            self._setup_distributed(instance_id, 'streamsadmin', 'passw0rd', st.get_rest_api())
+
         else:
             logger.error("Invalid arguments for StreamsContext.__init__: must supply either a BlueMix VCAP Services or "
                          "a username, password, and resource url.")
             raise ValueError("Must supply either a BlueMix VCAP Services or a username, password, and resource url"
                              " to the StreamsContext constructor.")
+        self.rest_client._sc = self
 
-    def get_domains(self):
+    def _setup_distributed(self, instance_id, username, password, resource_url):
+        self.resource_url = resource_url
+        self.rest_client = StreamsRestClient(username, password, self.resource_url)
+        self._analytics_service = False
+        if instance_id is None:
+            instance_id = os.environ['STREAMS_INSTANCE_ID']
+        self.instance_id = instance_id
+
+    def _get_elements(self, resource_name, eclass, id=None):
+        elements = []
+        for resource in self.get_resources():
+            if resource.name == resource_name:
+                for json_element in resource.get_resource()[resource_name]:
+                    if not _exact_resource(json_element, id):
+                        continue
+                    elements.append(eclass(json_element, self.rest_client))
+        return elements
+
+    def get_streaming_analytics(self):
+        """
+        Get a ref:StreamingAnalyticsService to allow interaction with
+        the Streaming Analytics service this object is connected to.
+
+        This connection must be configured for a Streaming Analytics service.
+        Returns:
+            StreamingAnalyticsService: Object to interact with service.
+        """
+        assert self._analytics_service
+
+        return StreamingAnalyticsService(self.rest_client, self.credentials)
+
+    def get_domains(self, id=None):
         """Retrieves a list of all Domain resources across all known streams installations.
 
         :return: Returns a list of all Domain resources.
         :type return: list.
         """
-        domains = []
-        for resource in self.get_resources():
-            # Get list of domains
-            if resource.name == "domains":
-                for json_domain in resource.get_resource()['domains']:
-                    domains.append(Domain(json_domain, self.rest_client))
-        return domains
+        return self._get_elements('domains', Domain, id=id)
 
-    def get_instances(self):
+    def get_instances(self, id=None):
         """Retrieves a list of all Instance resources across all known streams installations.
 
         :return: Returns a list of all Instance resources.
         :type return: list.
         """
-        instances = []
-        for resource in self.get_resources():
-            # Get list of domains
-            if resource.name == "instances":
-                for json_rep in resource.get_resource()['instances']:
-                    instances.append(Instance(json_rep, self.rest_client))
-        return instances
+        return self._get_elements('instances', Instance, id=id)
 
     def get_installations(self):
         """Retrieves a list of all known streams Installations.
@@ -100,13 +131,7 @@ class StreamsConnection:
         :return: Returns a list of all Installation resources.
         :type return: list.
         """
-        installations = []
-        for resource in self.get_resources():
-            # Get list of domains
-            if resource.name == "installations":
-                for json_rep in resource.get_resource()['installations']:
-                    installations.append(Installation(json_rep, self.rest_client))
-        return installations
+        return self._get_elements('installations', Installation)
 
     def get_views(self):
         """Gets a list of all View resources across all known streams installations.
