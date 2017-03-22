@@ -12,7 +12,7 @@ setup(
   download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/1.6.0rc1',
   keywords = ['streams', 'ibmstreams', 'streaming', 'analytics', 'streaming-analytics'],
   classifiers = [
-    'Development Status :: 5 - Production/Stable'
+    'Development Status :: 5 - Production/Stable',
     'License :: OSI Approved :: Apache Software License',
     'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 2.7',
