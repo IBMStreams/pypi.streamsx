@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.1.0.0" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.5.13.__dev__">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.6.0.__dev__">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -41,24 +41,27 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
     <uriTable>
       <uri index="54" value="com.ibm.streamsx.topology.functional.java/FunctionTransform/functor_32.gif"/>
       <uri index="52" value="com.ibm.streamsx.topology.functional.java/FunctionTransform"/>
-      <uri index="20" value="com.ibm.streamsx.topology.functional.python/PyFunctionMultiTransform/f../opt/icons/multi_transform_32.gif"/>
       <uri index="10" value="com.ibm.streamsx.topology.topic/topicsfilter.spl"/>
       <uri index="6" value="com.ibm.streamsx.topology/types.spl"/>
-      <uri index="66" value="com.ibm.streamsx.topology.functional.python2/PyFunctionTransform"/>
-      <uri index="61" value="com.ibm.streamsx.topology.functional.python2/PyFunctionFilter/f../opt/icons/ilter_32.gif"/>
-      <uri index="15" value="com.ibm.streamsx.topology.functional.python/opt/icons/filter_16.gif"/>
+      <uri index="22" value="com.ibm.streamsx.topology.functional.python/opt/icons/filter_16.gif"/>
+      <uri index="59" value="com.ibm.streamsx.topology.functional.python2/FlatMap"/>
+      <uri index="14" value="com.ibm.streamsx.topology.functional.python/FlatMap"/>
       <uri index="44" value="com.ibm.streamsx.topology.functional.java/FunctionConvertToSPL/functor_16.gif"/>
       <uri index="40" value="com.ibm.streamsx.topology.functional.java/FunctionSplit"/>
+      <uri index="20" value="com.ibm.streamsx.topology.functional.python/Source"/>
       <uri index="35" value="com.ibm.streamsx.topology.functional.java/FunctionPeriodicSource"/>
-      <uri index="59" value="com.ibm.streamsx.topology.functional.python2/PyFunctionFilter"/>
-      <uri index="68" value="com.ibm.streamsx.topology.functional.python2/PyFunctionTransform/f../opt/icons/transform_32.gif"/>
-      <uri index="70" value="com.ibm.streamsx.topology.functional.python2/PyFunctionHashAdder/f../opt/icons/transform_32.gif"/>
-      <uri index="60" value="com.ibm.streamsx.topology.functional.python2/opt/icons/filter_16.gif"/>
+      <uri index="71" value="com.ibm.streamsx.topology.functional.python2/ForEach"/>
+      <uri index="69" value="com.ibm.streamsx.topology.functional.python2/HashAdder"/>
+      <uri index="67" value="com.ibm.streamsx.topology.functional.python2/opt/icons/filter_16.gif"/>
       <uri index="32" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate/aggregate_16.gif"/>
+      <uri index="17" value="com.ibm.streamsx.topology.functional.python/Map"/>
       <uri index="2" value="com.ibm.streamsx.topology.functional.python2/namespace-info.spl"/>
       <uri index="47" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_16.gif"/>
       <uri index="51" value="com.ibm.streamsx.topology.functional.java/FunctionFilter/filter_32.gif"/>
+      <uri index="64" value="com.ibm.streamsx.topology.functional.python2/Map/f../opt/icons/transform_32.gif"/>
       <uri index="33" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate/aggregate_32.gif"/>
+      <uri index="65" value="com.ibm.streamsx.topology.functional.python2/Source"/>
+      <uri index="68" value="com.ibm.streamsx.topology.functional.python2/Filter/f../opt/icons/ilter_32.gif"/>
       <uri index="30" value="com.ibm.streamsx.topology.functional.java/PassThrough"/>
       <uri index="48" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_32.gif"/>
       <uri index="56" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform/functor_16.gif"/>
@@ -66,57 +69,54 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
       <uri index="43" value="com.ibm.streamsx.topology.functional.java/FunctionConvertToSPL"/>
       <uri index="31" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate"/>
       <uri index="57" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform/functor_32.gif"/>
-      <uri index="21" value="com.ibm.streamsx.topology.functional.python/PyFunctionTransform"/>
       <uri index="42" value="com.ibm.streamsx.topology.functional.java/FunctionSplit/split_32.gif"/>
-      <uri index="14" value="com.ibm.streamsx.topology.functional.python/PyFunctionFilter"/>
-      <uri index="24" value="com.ibm.streamsx.topology.functional.python/PyFunctionHashAdder"/>
+      <uri index="21" value="com.ibm.streamsx.topology.functional.python/Filter"/>
+      <uri index="26" value="com.ibm.streamsx.topology.functional.python/ForEach"/>
       <uri index="45" value="com.ibm.streamsx.topology.functional.java/FunctionConvertToSPL/functor_32.gif"/>
       <uri index="55" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform"/>
+      <uri index="70" value="com.ibm.streamsx.topology.functional.python2/HashAdder/f../opt/icons/transform_32.gif"/>
+      <uri index="61" value="com.ibm.streamsx.topology.functional.python2/FlatMap/f../opt/icons/multi_transform_32.gif"/>
       <uri index="27" value="com.ibm.streamsx.topology.file/TextFileReader"/>
-      <uri index="17" value="com.ibm.streamsx.topology.functional.python/PyFunctionSink"/>
       <uri index="8" value="com.ibm.streamsx.topology.testing/namespace-info.spl"/>
       <uri index="9" value="com.ibm.streamsx.topology.functional.java/namespace-info.spl"/>
       <uri index="28" value="com.ibm.streamsx.topology.file/DirectoryWatcher"/>
-      <uri index="71" value="com.ibm.streamsx.topology.functional.python2/PyFunctionSource"/>
       <uri index="38" value="com.ibm.streamsx.topology.functional.java/FunctionJoin/join_16.gif"/>
-      <uri index="62" value="com.ibm.streamsx.topology.functional.python2/PyFunctionSink"/>
+      <uri index="24" value="com.ibm.streamsx.topology.functional.python/HashAdder"/>
       <uri index="12" value="com.ibm.streamsx.topology.topic/topicsjava.spl"/>
-      <uri index="25" value="com.ibm.streamsx.topology.functional.python/PyFunctionHashAdder/f../opt/icons/transform_32.gif"/>
       <uri index="36" value="com.ibm.streamsx.topology.functional.java/HashRemover"/>
-      <uri index="63" value="com.ibm.streamsx.topology.functional.python2/PyFunctionMultiTransform"/>
       <uri index="39" value="com.ibm.streamsx.topology.functional.java/FunctionJoin/join_32.gif"/>
-      <uri index="67" value="com.ibm.streamsx.topology.functional.python2/opt/icons/transform_16.gif"/>
+      <uri index="63" value="com.ibm.streamsx.topology.functional.python2/opt/icons/transform_16.gif"/>
       <uri index="49" value="com.ibm.streamsx.topology.functional.java/FunctionFilter"/>
       <uri index="37" value="com.ibm.streamsx.topology.functional.java/FunctionJoin"/>
-      <uri index="64" value="com.ibm.streamsx.topology.functional.python2/opt/icons/multi_transform_16.gif"/>
+      <uri index="60" value="com.ibm.streamsx.topology.functional.python2/opt/icons/multi_transform_16.gif"/>
       <uri index="50" value="com.ibm.streamsx.topology.functional.java/FunctionFilter/filter_16.gif"/>
-      <uri index="18" value="com.ibm.streamsx.topology.functional.python/PyFunctionMultiTransform"/>
+      <uri index="62" value="com.ibm.streamsx.topology.functional.python2/Map"/>
+      <uri index="16" value="com.ibm.streamsx.topology.functional.python/FlatMap/f../opt/icons/multi_transform_32.gif"/>
       <uri index="7" value="com.ibm.streamsx.topology.file/namespace-info.spl"/>
-      <uri index="26" value="com.ibm.streamsx.topology.functional.python/PyFunctionSource"/>
+      <uri index="66" value="com.ibm.streamsx.topology.functional.python2/Filter"/>
       <uri index="13" value="com.ibm.streamsx.topology.topic/topics.spl"/>
-      <uri index="19" value="com.ibm.streamsx.topology.functional.python/opt/icons/multi_transform_16.gif"/>
+      <uri index="15" value="com.ibm.streamsx.topology.functional.python/opt/icons/multi_transform_16.gif"/>
       <uri index="41" value="com.ibm.streamsx.topology.functional.java/FunctionSplit/split_16.gif"/>
       <uri index="1" value="com.ibm.streamsx.topology.functional.python/namespace-info.spl"/>
       <uri index="5" value="com.ibm.streamsx.topology/namespace-info.spl"/>
-      <uri index="22" value="com.ibm.streamsx.topology.functional.python/opt/icons/transform_16.gif"/>
+      <uri index="18" value="com.ibm.streamsx.topology.functional.python/opt/icons/transform_16.gif"/>
       <uri index="29" value="com.ibm.streamsx.topology.testing/TesterSink"/>
-      <uri index="69" value="com.ibm.streamsx.topology.functional.python2/PyFunctionHashAdder"/>
+      <uri index="25" value="com.ibm.streamsx.topology.functional.python/HashAdder/f../opt/icons/transform_32.gif"/>
       <uri index="58" value="com.ibm.streamsx.topology.functional.java/FunctionSink"/>
-      <uri index="23" value="com.ibm.streamsx.topology.functional.python/PyFunctionTransform/f../opt/icons/transform_32.gif"/>
-      <uri index="65" value="com.ibm.streamsx.topology.functional.python2/PyFunctionMultiTransform/f../opt/icons/multi_transform_32.gif"/>
       <uri index="11" value="com.ibm.streamsx.topology.topic/namespace-info.spl"/>
       <uri index="3" value="com.ibm.streamsx.topology.python/python.spl"/>
-      <uri index="16" value="com.ibm.streamsx.topology.functional.python/PyFunctionFilter/f../opt/icons/ilter_32.gif"/>
+      <uri index="19" value="com.ibm.streamsx.topology.functional.python/Map/f../opt/icons/transform_32.gif"/>
       <uri index="34" value="com.ibm.streamsx.topology.functional.java/FunctionSource"/>
       <uri index="46" value="com.ibm.streamsx.topology.functional.java/HashAdder"/>
       <uri index="4" value="com.ibm.streamsx.topology.python/namespace-info.spl"/>
+      <uri index="23" value="com.ibm.streamsx.topology.functional.python/Filter/f../opt/icons/ilter_32.gif"/>
     </uriTable>
     <namespace name="com.ibm.streamsx.topology.python">
       <type column="6" line="12" name="__sply_dummy" static="true" type="int32" uriIndex="3"/>
     </namespace>
     <namespace name="com.ibm.streamsx.topology.functional.python">
-      <primitiveOp language="Cpp" modelUriIndex="14" name="PyFunctionFilter" public="true">
-        <description>Python functional filter.</description>
+      <primitiveOp language="Cpp" modelUriIndex="14" name="FlatMap" public="true">
+        <description>Python functional multiple transform.</description>
         <images>
           <image size="16" uriIndex="15"/>
           <image size="32" uriIndex="16"/>
@@ -138,29 +138,11 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="17" name="PyFunctionSink" public="true">
-        <description>Python functional sink. Each tuple results in a call to a function.</description>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
-          <description>Toolkit the operator was invoked from.</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
-          <description>Function's module </description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
-          <description>Function's name </description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
-          <description>Serialized instance of a callable class</description>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-      </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="18" name="PyFunctionMultiTransform" public="true">
-        <description>Python functional multiple transform.</description>
+      <primitiveOp language="Cpp" modelUriIndex="17" name="Map" public="true">
+        <description>Python functional transform.</description>
         <images>
-          <image size="16" uriIndex="19"/>
-          <image size="32" uriIndex="20"/>
+          <image size="16" uriIndex="18"/>
+          <image size="32" uriIndex="19"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -179,8 +161,24 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="21" name="PyFunctionTransform" public="true">
-        <description>Python functional transform.</description>
+      <primitiveOp language="Cpp" modelUriIndex="20" name="Source" public="true">
+        <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
+          <description>Toolkit the operator was invoked from.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
+          <description>Function's module </description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
+          <description>Function's name </description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
+          <description>Serialized instance of a callable class</description>
+        </parameter>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+      </primitiveOp>
+      <primitiveOp language="Cpp" modelUriIndex="21" name="Filter" public="true">
+        <description>Python functional filter.</description>
         <images>
           <image size="16" uriIndex="22"/>
           <image size="32" uriIndex="23"/>
@@ -202,10 +200,10 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="24" name="PyFunctionHashAdder" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="24" name="HashAdder" public="true">
         <description>Python functional transform.</description>
         <images>
-          <image size="16" uriIndex="22"/>
+          <image size="16" uriIndex="18"/>
           <image size="32" uriIndex="25"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
@@ -225,8 +223,8 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="26" name="PyFunctionSource" public="true">
-        <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
+      <primitiveOp language="Cpp" modelUriIndex="26" name="ForEach" public="true">
+        <description>Python functional sink. Each tuple results in a call to a function.</description>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
         </parameter>
@@ -239,7 +237,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
       </primitiveOp>
     </namespace>
     <namespace name="com.ibm.streamsx.topology">
@@ -822,8 +822,8 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
       </primitiveOp>
     </namespace>
     <namespace name="com.ibm.streamsx.topology.functional.python2">
-      <primitiveOp language="Cpp" modelUriIndex="59" name="PyFunctionFilter" public="true">
-        <description>Python functional filter.</description>
+      <primitiveOp language="Cpp" modelUriIndex="59" name="FlatMap" public="true">
+        <description>Python functional multiple transform.</description>
         <images>
           <image size="16" uriIndex="60"/>
           <image size="32" uriIndex="61"/>
@@ -845,29 +845,11 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="62" name="PyFunctionSink" public="true">
-        <description>Python functional sink. Each tuple results in a call to a function.</description>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
-          <description>Toolkit the operator was invoked from.</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
-          <description>Function's module </description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
-          <description>Function's name </description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
-          <description>Serialized instance of a callable class</description>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-      </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="63" name="PyFunctionMultiTransform" public="true">
-        <description>Python functional multiple transform.</description>
+      <primitiveOp language="Cpp" modelUriIndex="62" name="Map" public="true">
+        <description>Python functional transform.</description>
         <images>
-          <image size="16" uriIndex="64"/>
-          <image size="32" uriIndex="65"/>
+          <image size="16" uriIndex="63"/>
+          <image size="32" uriIndex="64"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -886,8 +868,24 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="66" name="PyFunctionTransform" public="true">
-        <description>Python functional transform.</description>
+      <primitiveOp language="Cpp" modelUriIndex="65" name="Source" public="true">
+        <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
+          <description>Toolkit the operator was invoked from.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
+          <description>Function's module </description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
+          <description>Function's name </description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
+          <description>Serialized instance of a callable class</description>
+        </parameter>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+      </primitiveOp>
+      <primitiveOp language="Cpp" modelUriIndex="66" name="Filter" public="true">
+        <description>Python functional filter.</description>
         <images>
           <image size="16" uriIndex="67"/>
           <image size="32" uriIndex="68"/>
@@ -909,10 +907,10 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="69" name="PyFunctionHashAdder" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="69" name="HashAdder" public="true">
         <description>Python functional transform.</description>
         <images>
-          <image size="16" uriIndex="67"/>
+          <image size="16" uriIndex="63"/>
           <image size="32" uriIndex="70"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
@@ -932,8 +930,8 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="71" name="PyFunctionSource" public="true">
-        <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
+      <primitiveOp language="Cpp" modelUriIndex="71" name="ForEach" public="true">
+        <description>Python functional sink. Each tuple results in a call to a function.</description>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
         </parameter>
@@ -946,7 +944,9 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
       </primitiveOp>
     </namespace>
     <sabFiles>

@@ -343,7 +343,7 @@ class Topology(object):
              func = streamsx.topology.functions._IterableInstance(func)
         
         sl = _SourceLocation(_source_info(), "source")
-        op = self.graph.addOperator(self.opnamespace+"::PyFunctionSource", func, name=name, sl=sl)
+        op = self.graph.addOperator(self.opnamespace+"::Source", func, name=name, sl=sl)
         oport = op.addOutputPort()
         return Stream(self, oport)
 
@@ -405,7 +405,7 @@ class Stream(object):
             None
         """
         sl = _SourceLocation(_source_info(), "for_each")
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionSink", func, name=name, sl=sl)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::ForEach", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport)
 
     def sink(self, func, name=None):
@@ -427,33 +427,65 @@ class Stream(object):
             Stream: A Stream containing tuples that have not been filtered out.
         """
         sl = _SourceLocation(_source_info(), "filter")
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionFilter", func, name=name, sl=sl)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::Filter", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
         return Stream(self.topology, oport)
 
     def _map(self, func, schema, name=None):
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionTransform", func, name=name)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::Map", func, name=name)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=schema)
         return Stream(self.topology, oport)
 
-    def view(self, buffer_time = 10.0, sample_size = 10000, name=None):
+    def view(self, buffer_time = 10.0, sample_size = 10000, name=None, description=None, start=False):
         """
-        Defines a view on a stream. Returns a view object which can be used to access the data
-        :param buffer_time The window of time over which tuples will be
-        :param name Name of the view. Name must be unique within the topology. Defaults to a generated name.
+        Defines a view on a stream.
+
+        A view is a continually updated sampled buffer of a streams's tuples.
+        Views allow visibility into a stream from external clients such
+        as the Streams console,
+        `Microsoft Excel <https://www.ibm.com/support/knowledgecenter/SSCRJU_4.2.0/com.ibm.streams.excel.doc/doc/excel_overview.html>`_ or REST clients.
+
+        The view created by this method can be used by external clients
+        and through the returned object after the topology is submitted. 
+
+        When the stream contains Python objects then they are converted
+        to JSON.
+
+        Args:
+            buffer_time: Specifies the buffer size to use measured in seconds.
+            sample_size: Specifies the number of tuples to sample per second.
+            name: Name of the view. Name must be unique within the topology. Defaults to a generated name.
+            description: Description of the view.
+            start(bool): Start buffering data when the job is submitted.
+                If `False` then the view is starts buffering data when the first
+                remote client accesses it to retrieve data.
+ 
+        Returns:
+            View object which can be used to access the data when the
+            topology is submitted.
         """
-        new_op = self._map(streamsx.topology.functions.identity,schema=schema.CommonSchema.Json)
         if name is None:
             name = ''.join(random.choice('0123456789abcdef') for x in range(16))
 
-        port = new_op.oport.name
-        new_op.oport.operator.addViewConfig({
+        if self.oport.schema == schema.CommonSchema.Python:
+            view_stream = self._map(streamsx.topology.functions.identity,schema=schema.CommonSchema.Json)
+            # colocate map operator with stream that is being viewed.
+            self.oport.operator.colocate(view_stream.oport.operator, 'view')
+        else:
+            view_stream = self
+
+        port = view_stream.oport.name
+        view_config = {
                 'name': name,
                 'port': port,
+                'description': description,
                 'bufferTime': buffer_time,
-                'sampleSize': sample_size})
+                'sampleSize': sample_size}
+        if start:
+            view_config['activateOption'] = 'automatic'
+        view_stream.oport.operator.addViewConfig(view_config)
         _view = View(name)
         self.topology.graph.get_views().append(_view)
         return _view
@@ -502,7 +534,7 @@ class Stream(object):
             TypeError: if `func` does not return an iterator nor None
         """     
         sl = _SourceLocation(_source_info(), "flat_map")
-        op = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionMultiTransform", func, name=name, sl=sl)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::FlatMap", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
@@ -606,7 +638,7 @@ class Stream(object):
 
             if func is not None:
                 keys = ['__spl_hash']
-                hash_adder = self.topology.graph.addOperator(self.topology.opnamespace+"::PyFunctionHashAdder", func)
+                hash_adder = self.topology.graph.addOperator(self.topology.opnamespace+"::HashAdder", func)
                 hash_schema = self.oport.schema.extend(schema.StreamSchema("tuple<int64 __spl_hash>"))
                 hash_adder.addInputPort(outputPort=self.oport)
                 parallel_input = hash_adder.addOutputPort(schema=hash_schema)
@@ -674,7 +706,7 @@ class Stream(object):
         """
         self.sink(streamsx.topology.functions.print_flush)
 
-    def publish(self, topic, schema=schema.CommonSchema.Python):
+    def publish(self, topic, schema=None):
         """
         Publish this stream on a topic for other Streams applications to subscribe to.
         A Streams application may publish a stream to allow other
@@ -701,14 +733,16 @@ class Stream(object):
         Returns:
             None
         """
-        if self.oport.schema.schema() != schema.schema():
-            self._map(streamsx.topology.functions.identity,schema=schema).publish(topic, schema=schema)
+        if schema is not None and self.oport.schema.schema() != schema.schema():
+            schema_change = self._map(streamsx.topology.functions.identity,schema=schema)
+            self.oport.operator.colocate(schema_change.oport.operator, 'publish')
+            schema_change.publish(topic, schema=schema)
             return None
 
         sl = _SourceLocation(_source_info(), "publish")
-        publish_arams = {'topic': topic}
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params=publish_arams, sl=sl)
+        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params={'topic': topic}, sl=sl)
         op.addInputPort(outputPort=self.oport)
+        self.oport.operator.colocate(op, 'publish')
 
     def autonomous(self):
         """
@@ -756,39 +790,25 @@ class View(object):
     def __init__(self, name):
         self.name = name
 
-        self.streams_connection = None
-        self.view_object = None
-        self.streams_connection_config = {'username': '', 'password': '', 'rest_api_url': ''}
-
-        self.is_rest_initialized = False
+        self._view_object = None
+        self._submit_context = None
+        self._streams_connection = None
 
     def initialize_rest(self):
-        if not self.is_rest_initialized:
-            if self.streams_connection_config['username'] is None or \
-               self.streams_connection_config['password'] is None or \
-               self.streams_connection_config['rest_api_url'] is None:
-                raise ValueError(
-                    "WARNING: A username, a password, and a rest url must be present in order to access view data")
-            from streamsx import rest
-            rc = rest.StreamsConnection(self.streams_connection_config['username'],
-                                        self.streams_connection_config['password'],
-                                        self.streams_connection_config['rest_api_url'])
-            self.is_rest_initialized = True
-            self.set_streams_connection(rc)
+        if self._streams_connection is None:
+            if self._submit_context is None:
+                raise ValueError("View has not been created.")
+
+            self._streams_connection = self._submit_context.streams_connection()
 
     def stop_data_fetch(self):
-        self.view_object.stop_data_fetch()
+        self._view_object.stop_data_fetch()
 
     def start_data_fetch(self):
         self.initialize_rest()
-        try:
-            self.view_object = self.streams_connection.get_view(self.name)
-        except:
-            raise
-        return self.view_object.start_data_fetch()
+        sc = self._streams_connection
+        instance = sc.get_instance(id=self._submit_context.submission_results['instanceId'])
+        job = instance.get_job(id=self._submit_context.submission_results['jobId'])
+        self._view_object = job.get_views(name=self.name)[0]
 
-    def set_streams_connection_config(self, conf):
-        self.streams_connection_config = conf
-
-    def set_streams_connection(self, sc):
-        self.streams_connection = sc
+        return self._view_object.start_data_fetch()

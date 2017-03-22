@@ -21,7 +21,7 @@ class StreamSchema(object) :
     def schema(self):
         return self.__schema
 
-    def str(self):
+    def __str__(self):
         return self.__schema
 
     def spl_json(self):
@@ -102,6 +102,12 @@ class CommonSchema(enum.Enum):
 
     .. warning:: `Binary` is not yet supported for Python applications.
     """
+    XML = StreamSchema("tuple<xml document>")
+    """
+    Stream where each tuple is an XML document.
+
+    .. warning:: `XML` is not yet supported for Python applications.
+    """
 
     def schema(self):
         return self.value.schema()
@@ -112,5 +118,5 @@ class CommonSchema(enum.Enum):
     def extend(self, schema):
         return self.value.extend(schema)
 
-    def str(self):
+    def __str__(self):
         return str(self.schema())

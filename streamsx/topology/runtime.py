@@ -16,11 +16,17 @@ except ImportError:
 import base64
 import sys
 import json
+from pkgutil import extend_path
+import streamsx
 
 def __splpy_addDirToPath(dir):
     if os.path.isdir(dir):
         if dir not in sys.path:
             sys.path.insert(0, dir)
+            # In case a streamsx module (e.g. streamsx.bm) 
+            # is included in the additional code
+            if os.path.isdir(os.path.join(dir, 'streamsx')):
+                streamsx.__path__ = extend_path(streamsx.__path__, streamsx.__name__)
                 
 def setupOperator(dir):
     pydir = os.path.join(dir, 'opt', 'python')
@@ -267,7 +273,7 @@ class _PickleIterator:
 # None, otherwise it returns
 # an instance of _PickleIterator
 # wrapping an iterator from the iterable
-# Used by PyFunctionMultiTransform
+# Used by FlatMap
 
 class _ObjectInPickleIter(_FunctionalCallable):
     def __call__(self, tuple):
