@@ -2,6 +2,7 @@
 # Licensed Materials - Property of IBM
 # Copyright IBM Corp. 2016
 import os
+import sys
 import pickle
 from past.builtins import basestring
 
@@ -9,12 +10,15 @@ import streamsx.ec as ec
 
 try:
     import dill
+    # Importing cloudpickle break dill's deserialization.
+    # Workaround is to make dill aware of the ClassType type.
+    if sys.version_info.major == 3:
+        dill.dill._reverse_typemap['ClassType'] = type
     dill.settings['recurse'] = True
 except ImportError:
     dill = pickle
 
 import base64
-import sys
 import json
 from pkgutil import extend_path
 import streamsx
@@ -63,7 +67,7 @@ class _FunctionalCallable(object):
             is_cls = is_cls and (not inspect.isclass(self._callable))
             
             if is_cls:
-                if ec._supported:
+                if ec._is_supported():
                     self._callable._streamsx_ec_op = ec._get_opc(self._callable)
                 self._cls = True
                 ec._callable_enter(self._callable)

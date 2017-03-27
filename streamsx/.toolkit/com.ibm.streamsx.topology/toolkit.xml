@@ -961,10 +961,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
       <ti:include path="nl/**" root="toolkitDir"/>
       <ti:include path="opt/**" root="toolkitDir"/>
       <ti:exclude path="opt/httpcomponents-client-4.3.6/**"/>
+      <ti:exclude path="opt/apache-commons/commons-compress-1.7.jar"/>
       <ti:exclude path="opt/icons/**"/>
       <ti:exclude path="opt/python/codegen/**"/>
       <ti:exclude path="opt/python/include/**"/>
       <ti:exclude path="opt/python/templates/**"/>
+      <ti:exclude path="opt/python/packages/**/__pycache__/**"/>
     </sabFiles>
   </toolkit>
 
