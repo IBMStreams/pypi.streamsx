@@ -33,6 +33,6 @@ See `streamsx.rest <http://ibmstreams.github.io/streamsx.topology/doc/releases/1
 Documentation
 =============
 
-Full package documentation at: `streamsx.rest <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.6/pythondoc/index.html>`_
+`Full package documentation.<http://ibmstreams.github.io/streamsx.topology/doc/releases/1.6/pythondoc/index.html>`_
 
 
