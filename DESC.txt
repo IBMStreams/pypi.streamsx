@@ -30,3 +30,9 @@ through HTTPS REST APIs.
 
 See `streamsx.rest <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.6/pythondoc/streamsx.rest.html#module-streamsx.rest>`_
 
+Documentation
+=============
+
+Full package documentation at: `streamsx.rest <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.6/pythondoc/index.html>`_
+
+
