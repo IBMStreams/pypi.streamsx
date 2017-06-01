@@ -109,7 +109,7 @@ sub main::generate($$) {
    print '  }', "\n";
    }
    print "\n";
-   print '  streamsx::topology::Splpy::pyTupleSink(funcop_->callable(), value);', "\n";
+   print '  streamsx::topology::Splpy::pyTupleForEach(funcop_->callable(), value);', "\n";
    print '}', "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);

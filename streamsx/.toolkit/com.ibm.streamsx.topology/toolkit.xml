@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.1.0.0" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.6.0.__dev__">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.6.1">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -133,6 +133,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -156,6 +159,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -174,6 +180,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
         </parameter>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
@@ -194,6 +203,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
         </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
@@ -840,6 +852,9 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -863,6 +878,9 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -881,6 +899,9 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
         </parameter>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
@@ -901,6 +922,9 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
         </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>

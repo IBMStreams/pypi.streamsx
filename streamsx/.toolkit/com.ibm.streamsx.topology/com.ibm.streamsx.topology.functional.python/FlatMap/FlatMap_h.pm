@@ -37,6 +37,10 @@ sub main::generate($$) {
    print '    ', "\n";
    print '    // Names of input attributes', "\n";
    print '    PyObject *pyInNames_;', "\n";
+   print "\n";
+   print '    // Number of output connections when passing by ref', "\n";
+   print '    // -1 when cannot pass by ref', "\n";
+   print '    int32_t occ_;', "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);

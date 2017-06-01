@@ -12,6 +12,7 @@ sub main::generate($$) {
    print '/* Additional includes go here */', "\n";
    print "\n";
    print '#include "splpy.h"', "\n";
+   print '#include "splpy_tuple.h"', "\n";
    print '#include "splpy_funcop.h"', "\n";
    print "\n";
    print 'using namespace streamsx::topology;', "\n";
@@ -46,14 +47,55 @@ sub main::generate($$) {
     my $pywrapfunc= $pystyle . '_in__pickle_iter';
    print "\n";
    print "\n";
+   print '// Default case is pass by pickled value in which case', "\n";
+   print '// flat map code is nothing.', "\n";
+   print '#define SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(splv, pyv, occ)', "\n";
+   print '    ', "\n";
+   print "\n";
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
-   print '   pyInNames_(NULL)', "\n";
+   print '   pyInNames_(NULL),', "\n";
+   print '   occ_(-1)', "\n";
    print '{ ', "\n";
-   print '    funcop_ = new SplpyFuncOp(this, "';
+   print '    const char * wrapfn = "';
    print $pywrapfunc;
-   print '");', "\n";
+   print '";', "\n";
+   print "\n";
+   # If occ parameter is positive then pass-by-ref is possible
+   # Generate code to allow pass by ref but only use when
+   # not connected to a PE output port.
+   
+    my $oc = $model->getParameterByName("outputConnections");
+   
+    if ($oc) {
+       my $occ = $oc->getValueAt(0)->getSPLExpression();
+       if ($occ > 0) {
+           my $pybyrefwrapfunc = $pystyle . '_in__object_iter';
+   print "\n";
+   print "\n";
+   print '// Macro inserts an if passing by ref check then pass tuple', "\n";
+   print '// by ref, else use the existing code.', "\n";
+   print '#undef SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF', "\n";
+   print '#define SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(splv, pyv, occ) \\', "\n";
+   print '    if (occ_ > 0) { \\', "\n";
+   print '        pyTupleByRef(splv, pyv, occ_); \\', "\n";
+   print '    } else', "\n";
+   print "\n";
+   print '    if (!this->getOutputPortAt(0).isConnectedToAPEOutputPort()) {', "\n";
+   print '       // pass by reference', "\n";
+   print '       wrapfn = "';
+   print $pybyrefwrapfunc;
+   print '";', "\n";
+   print '       occ_ = ';
+   print $occ;
+   print ';', "\n";
+   print '    }', "\n";
+       } 
+    }
+   print "\n";
+   print "\n";
+   print '    funcop_ = new SplpyFuncOp(this, wrapfn);', "\n";
    print "\n";
     if ($pystyle eq 'dict') { 
    print "\n";
@@ -116,10 +158,8 @@ sub main::generate($$) {
    print "\n";
    print "\n";
    print '    SplpyGIL lock;', "\n";
-   print '    // convert spl attribute to python object', "\n";
-   print '    PyObject * pyArg = streamsx::topology::pySplValueToPyObject(value);', "\n";
    print "\n";
-   print '    PyObject * pyIterator = streamsx::topology::Splpy::pyTupleFunc(funcop_->callable(), pyArg);', "\n";
+   print '    PyObject * pyIterator = streamsx::topology::pySplProcessTuple(funcop_->callable(), value);', "\n";
    print "\n";
    print '    if (pyIterator == 0) {', "\n";
    print '         throw SplpyGeneral::pythonException(', "\n";
@@ -136,8 +176,12 @@ sub main::generate($$) {
    print "\n";
    print '      // construct spl blob and tuple from pickled return value', "\n";
    print '      OPort0Type otuple;', "\n";
-   print '      pySplValueFromPyObject(otuple.get___spl_po(), item);', "\n";
-   print '      Py_DECREF(item); ', "\n";
+   print "\n";
+   print '      SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(otuple.get___spl_po(), item, occ_)', "\n";
+   print '      {', "\n";
+   print '          pySplValueFromPyObject(otuple.get___spl_po(), item);', "\n";
+   print '          Py_DECREF(item); ', "\n";
+   print '      }', "\n";
    print '      output_tuples.push_back(otuple);', "\n";
    print '    }', "\n";
    print '    Py_DECREF(pyIterator);', "\n";

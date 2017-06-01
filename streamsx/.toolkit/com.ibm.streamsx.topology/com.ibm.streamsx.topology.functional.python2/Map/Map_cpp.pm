@@ -47,14 +47,49 @@ sub main::generate($$) {
     my $pywrapfunc= $pystyle . '_in__' . $pyoutstyle . '_out';
    print "\n";
    print "\n";
+   print '#define SPLPY_TUPLE_MAP(f, v, r, occ) \\', "\n";
+   print '    streamsx::topology::Splpy::pyTupleMap(f, v, r)', "\n";
+   print "\n";
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
-   print '   pyInNames_(NULL)', "\n";
+   print '   pyInNames_(NULL),', "\n";
+   print '   occ_(-1)', "\n";
    print '{', "\n";
-   print '    funcop_ = new SplpyFuncOp(this, "';
+   print '    const char * wrapfn = "';
    print $pywrapfunc;
-   print '");', "\n";
+   print '";', "\n";
+   print "\n";
+   # If occ parameter is positive then pass-by-ref is possible
+   # Generate code to allow pass by ref but only use when
+   # not connected to a PE output port.
+   
+    my $oc = $model->getParameterByName("outputConnections");
+   
+    if ($oc) {
+       my $occ = $oc->getValueAt(0)->getSPLExpression();
+       if ($occ > 0) {
+           my $pybyrefwrapfunc = $pystyle . '_in__object_out';
+   print "\n";
+   print "\n";
+   print '#undef SPLPY_TUPLE_MAP', "\n";
+   print '#define SPLPY_TUPLE_MAP(f, v, r, occ) \\', "\n";
+   print '    streamsx::topology::Splpy::pyTupleMapByRef(f, v, r, occ)', "\n";
+   print "\n";
+   print '    if (!this->getOutputPortAt(0).isConnectedToAPEOutputPort()) {', "\n";
+   print '       // pass by reference', "\n";
+   print '       wrapfn = "';
+   print $pybyrefwrapfunc;
+   print '";', "\n";
+   print '       occ_ = ';
+   print $occ;
+   print ';', "\n";
+   print '    }', "\n";
+       } 
+    }
+   print "\n";
+   print "\n";
+   print '    funcop_ = new SplpyFuncOp(this, wrapfn);', "\n";
    print "\n";
     if ($pystyle eq 'dict') { 
    print "\n";
@@ -91,7 +126,7 @@ sub main::generate($$) {
    print '{', "\n";
    print '  IPort0Type const &ip = static_cast<IPort0Type const &>(tuple);', "\n";
    print "\n";
-   print splpy_inputtuple2value($pystyle, $pyoutstyle);
+   print splpy_inputtuple2value($pystyle);
    print "\n";
    print "\n";
    if ($pystyle eq 'dict') {
@@ -112,10 +147,10 @@ sub main::generate($$) {
    }
    print "\n";
    print '  OPort0Type otuple;', "\n";
-   print '  if (streamsx::topology::Splpy::pyTupleTransform(funcop_->callable(), value,', "\n";
+   print '  if (SPLPY_TUPLE_MAP(funcop_->callable(), value,', "\n";
    print '       otuple.get_';
    print $model->getOutputPortAt(0)->getAttributeAt(0)->getName();
-   print '()))', "\n";
+   print '(), occ_))', "\n";
    print '     submit(otuple, 0);', "\n";
    print '}', "\n";
    print "\n";

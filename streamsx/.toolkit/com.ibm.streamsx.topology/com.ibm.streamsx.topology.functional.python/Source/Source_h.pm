@@ -37,6 +37,10 @@ sub main::generate($$) {
    print '  // Members', "\n";
    print '  // Control for interaction with Python', "\n";
    print '  SplpyFuncOp *funcop_;', "\n";
+   print "\n";
+   print '  // Number of output connections when passing by ref', "\n";
+   print '  // -1 when cannot pass by ref', "\n";
+   print '  int32_t occ_;', "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);
