@@ -49,6 +49,12 @@ Here is a simple example that tests a filter correctly only passes tuples with v
 
 A stream may have any number of conditions and any number of streams may be tested.
 
+A py:meth:`~Tester.local_check` is supported where a method of the
+unittest class is executed once the job becomes healthy. This performs
+checks from the context of the Python unittest class, such as
+checking external effects of the application or using the REST api to
+monitor the application.
+
 .. warning::
     Python 3.5 and Streaming Analytics service or IBM Streams 4.2 or later is required when using `Tester`.
 """
@@ -65,7 +71,7 @@ from streamsx.rest import StreamingAnalyticsConnection
 from streamsx.topology.context import ConfigParams
 import time
 
-
+import streamsx.topology.tester_runtime as sttrt
 
 _logger = logging.getLogger('streamsx.topology.test')
 
@@ -233,10 +239,10 @@ class Tester(object):
         _logger.debug("Adding tuple count (%d) condition to stream %s.", count, stream)
         if exact:
             name = "ExactCount" + str(len(self._conditions))
-            cond = _TupleExactCount(count, name)
+            cond = sttrt._TupleExactCount(count, name)
         else:
             name = "AtLeastCount" + str(len(self._conditions))
-            cond = _TupleAtLeastCount(count, name)
+            cond = sttrt._TupleAtLeastCount(count, name)
         return self.add_condition(stream, cond)
 
     def contents(self, stream, expected, ordered=True):
@@ -252,9 +258,9 @@ class Tester(object):
         """
         name = "StreamContents" + str(len(self._conditions))
         if ordered:
-            cond = _StreamContents(expected, name)
+            cond = sttrt._StreamContents(expected, name)
         else:
-            cond = _UnorderedStreamContents(expected, name)
+            cond = sttrt._UnorderedStreamContents(expected, name)
         return self.add_condition(stream, cond)
 
     def tuple_check(self, stream, checker):
@@ -306,13 +312,13 @@ class Tester(object):
 
         """
         name = "TupleCheck" + str(len(self._conditions))
-        cond = _TupleCheck(checker, name)
+        cond = sttrt._TupleCheck(checker, name)
         return self.add_condition(stream, cond)
 
     def local_check(self, callable):
         """Perform local check while the application is being tested.
 
-        A call to `callable` is made after the application under test is submitted.
+        A call to `callable` is made after the application under test is submitted and becomes healthy.
         The check is in the context of the Python runtime executing the unittest case,
         typically the callable is a method of the test case.
 
@@ -360,13 +366,14 @@ class Tester(object):
 
         Args:
             callable: Callable object.
+
         """
         self.local_check = callable
 
     def test(self, ctxtype, config=None, assert_on_fail=True, username=None, password=None):
         """Test the topology.
 
-        Submits the topology for testing and verifies the test conditions are met.
+        Submits the topology for testing and verifies the test conditions are met and the job remained healthy through its execution.
 
         The submitted application (job) is monitored for the test conditions and
         will be canceled when all the conditions are valid or at least one failed.
@@ -376,7 +383,7 @@ class Tester(object):
         The test passes if all conditions became valid and the local check callable (if present) completed without
         raising an error.
 
-        The test fails if any condition fails or the local check callable (if present) raised an exception.
+        The test fails if the job is unhealthy, any condition fails or the local check callable (if present) raised an exception.
 
         Args:
             ctxtype(str): Context type for submission.
@@ -461,12 +468,18 @@ class Tester(object):
         return self._distributed_wait_for_result()
 
     def _distributed_wait_for_result(self):
-        self._start_local_check()
+
         cc = _ConditionChecker(self, self.streams_connection, self.submission_result)
-        self.result = cc._complete()
+        # Wait for the job to be healthy before calling the local check.
+        if cc._wait_for_healthy():
+            self._start_local_check()
+            self.result = cc._complete()
+            if self.local_check is not None:
+                self._local_thread.join()
+        else:
+            self.result = cc._end(False, _ConditionChecker._UNHEALTHY)
+
         self.result['submission_result'] = self.submission_result
-        if self.local_check is not None:
-            self._local_thread.join()
         cc._canceljob(self.result)
         if self.local_check_exception is not None:
             raise self.local_check_exception
@@ -486,167 +499,6 @@ class Tester(object):
             self.local_check_value = None
             self.local_check_exception = e
 
-class Condition(object):
-    """A condition for testing.
-
-    Args:
-        name(str): Condition name, must be unique within the tester.
-    """
-    _METRIC_PREFIX = "streamsx.condition:"
-
-    @staticmethod
-    def _mn(mt, name):
-        return Condition._METRIC_PREFIX + mt + ":" + name
-
-    def __init__(self, name=None):
-        self.name = name
-        self._valid = False
-        self._fail = False
-
-    @property
-    def valid(self):
-        """Is the condition valid.
-
-        A subclass must set `valid` when the condition becomes valid.
-        """
-        return self._valid
-    @valid.setter
-    def valid(self, v):
-        if self._fail:
-           return
-        if self._valid != v:
-            if v:
-                self._metric_valid.value = 1
-            else:
-                self._metric_valid.value = 0
-            self._valid = v
-        self._metric_seq += 1
-
-    def fail(self):
-        """Fail the condition.
-
-        Marks the condition as failed. Once a condition has failed it
-        can never become valid, the test that uses the condition will fail.
-        """
-        self._metric_fail.value = 1
-        self.valid = False
-        self._fail = True
-        if (ec.is_standalone()):
-            raise AssertionError("Condition failed:" + str(self))
-
-    def __getstate__(self):
-        # Remove metrics from saved state.
-        state = self.__dict__.copy()
-        for key in state:
-            if key.startswith('_metric'):
-              del state[key]
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-
-    def __enter__(self):
-        self._metric_valid = self._create_metric("valid", kind='Gauge')
-        self._metric_seq = self._create_metric("seq")
-        self._metric_fail = self._create_metric("fail", kind='Gauge')
-        pass
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if (ec.is_standalone()):
-            if not self._fail and not self.valid:
-                raise AssertionError("Condition failed:" + str(self))
-
-    def _create_metric(self, mt, kind=None):
-        return ec.CustomMetric(self, name=Condition._mn(mt, self.name), kind=kind)
-
-
-class _TupleExactCount(Condition):
-    def __init__(self, target, name=None):
-        super(_TupleExactCount, self).__init__(name)
-        self.target = target
-        self.count = 0
-        if target == 0:
-            self.valid = True
-
-    def __call__(self, tuple):
-        self.count += 1
-        self.valid = self.target == self.count
-        if self.count > self.target:
-            self.fail()
-
-    def __str__(self):
-        return "Exact tuple count: expected:" + str(self.target) + " received:" + str(self.count)
-
-class _TupleAtLeastCount(Condition):
-    def __init__(self, target, name=None):
-        super(_TupleAtLeastCount, self).__init__(name)
-        self.target = target
-        self.count = 0
-        if target == 0:
-            self.valid = True
-
-    def __call__(self, tuple):
-        self.count += 1
-        self.valid = self.count >= self.target
-
-    def __str__(self):
-        return "At least tuple count: expected:" + str(self.target) + " received:" + str(self.count)
-
-class _StreamContents(Condition):
-    def __init__(self, expected, name=None):
-        super(_StreamContents, self).__init__(name)
-        self.expected = expected
-        self.received = []
-
-    def __call__(self, tuple):
-        self.received.append(tuple)
-        if len(self.received) > len(self.expected):
-            self.fail()
-            return
-
-        if self._check_for_failure():
-            return
-
-        self.valid = len(self.received) == len(self.expected)
-
-    def _check_for_failure(self):
-        """Check for failure.
-        """
-        if self.expected[len(self.received) - 1] != self.received[-1]:
-            self.fail()
-            return True
-        return False
-
-    def __str__(self):
-        return "Stream contents: expected:" + str(self.expected) + " received:" + str(self.received)
-
-class _UnorderedStreamContents(_StreamContents):
-    def _check_for_failure(self):
-        """Unordered check for failure.
-
-        Can only check when the expected number of tuples have been received.
-        """
-        if len(self.expected) == len(self.received):
-            if collections.Counter(self.expected) != collections.Counter(self.received):
-                self.fail()
-                return True
-        return False
-
-class _TupleCheck(Condition):
-    def __init__(self, checker, name=None):
-        super(_TupleCheck, self).__init__(name)
-        self.checker = checker
-
-    def __call__(self, tuple):
-        if not self.checker(tuple):
-            self.fail()
-        else:
-            # Will not override if already failed
-            self.valid = True
-
-    def __str__(self):
-        return "Tuple checker:" + str(self.checker)
-
 #######################################
 # Internal functions
 #######################################
@@ -661,6 +513,8 @@ def _result_to_dict(passed, t):
     return result
 
 class _ConditionChecker(object):
+    _UNHEALTHY = (False, False, False, None)
+
     def __init__(self, tester, sc, sjr):
         self.tester = tester
         self._sc = sc
@@ -676,6 +530,17 @@ class _ConditionChecker(object):
         self.additional_checks = 2
 
         self.job = self._find_job()
+
+    # Wait for job to be healthy. Returns True
+    # if the job became healthy, False if not.
+    def _wait_for_healthy(self):
+        while (self.waits * self.delay) < self.timeout:
+            if self.__check_job_health():
+                self.waits = 0
+                return True
+            time.sleep(self.delay)
+            self.waits += 1
+        return False
 
     def _complete(self):
         while (self.waits * self.delay) < self.timeout:
@@ -703,6 +568,8 @@ class _ConditionChecker(object):
             self.job.cancel(force=not result['passed'])
 
     def __check_once(self):
+        if not self.__check_job_health():
+            return _ConditionChecker._UNHEALTHY
         cms = self._get_job_metrics()
         valid = True
         progress = True
@@ -710,7 +577,7 @@ class _ConditionChecker(object):
         condition_states = {}
         for cn in self._sequences:
             condition_states[cn] = 'NotValid'
-            seq_mn = Condition._mn('seq', cn)
+            seq_mn = sttrt.Condition._mn('seq', cn)
             # If the metrics are missing then the operator
             # is probably still starting up, cannot be valid.
             if not seq_mn in cms:
@@ -722,7 +589,7 @@ class _ConditionChecker(object):
             else:
                 self._sequences[cn] = seq_m.value
 
-            fail_mn = Condition._mn('fail', cn)
+            fail_mn = sttrt.Condition._mn('fail', cn)
             if not fail_mn in cms:
                 valid = False
                 continue
@@ -733,7 +600,7 @@ class _ConditionChecker(object):
                 condition_states[cn] = 'Fail'
                 continue
 
-            valid_mn =  Condition._mn('valid', cn)
+            valid_mn =  sttrt.Condition._mn('valid', cn)
 
             if not valid_mn in cms:
                 valid = False
@@ -747,6 +614,10 @@ class _ConditionChecker(object):
 
         return (valid, fail, progress, condition_states)
 
+    def __check_job_health(self):
+        self.job.refresh()
+        return self.job.health == 'healthy'
+
     def _find_job(self):
         instance = self._sc.get_instance(id=self._instance_id)
         return instance.get_job(id=self._job_id)
@@ -758,7 +629,7 @@ class _ConditionChecker(object):
         """
         cms = {}
         for op in self.job.get_operators():
-            metrics = op.get_metrics(name=Condition._METRIC_PREFIX + '*')
+            metrics = op.get_metrics(name=sttrt.Condition._METRIC_PREFIX + '*')
             for m in metrics:
                 cms[m.name] = m
         return cms
