@@ -8,6 +8,7 @@ setup(
   long_description = open('DESC.txt').read(),
   author = 'IBM Streams @ github.com',
   author_email = 'debrunne@us.ibm.com',
+  license='Apache License - Version 2.0'
   url = 'https://github.com/IBMStreams/pypi.streamsx',
   download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/1.6.2',
   keywords = ['streams', 'ibmstreams', 'streaming', 'analytics', 'streaming-analytics'],
