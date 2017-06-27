@@ -78,8 +78,7 @@ class StreamsConnection:
         session (:py:class:`requests.Session`): Requests session object for making REST calls.
     """
     def __init__(self, username=None, password=None, resource_url=None):
-        # manually specify username, password, and resource_url
-        
+        """specify username, password, and resource_url"""
         if username and password:
             # resource URL can be obtained via streamtool geturl or REST call
             pass
