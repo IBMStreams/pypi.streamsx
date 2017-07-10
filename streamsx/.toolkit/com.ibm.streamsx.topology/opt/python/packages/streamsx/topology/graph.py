@@ -58,6 +58,7 @@ class SPLGraph(object):
         self._views = []
         self._spl_toolkits = []
         self._used_names = {'list', 'tuple', 'int'}
+        self._layout_group_id = 0
 
     def get_views(self):
         return self._views
@@ -132,6 +133,11 @@ class SPLGraph(object):
         self.operators.append(op)
         return op
 
+    def _next_layout_group_id(self):
+        lgi = '__spl_lg_' + str(self._layout_group_id)
+        self._layout_group_id += 1
+        return lgi
+
     def generateSPLGraph(self):
         _graph = {}
         _graph["name"] = self.name
@@ -193,6 +199,7 @@ class _SPLInvocation(object):
 
         self.inputPorts = []
         self.outputPorts = []
+        self._layout_hints = {}
 
     def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema= CommonSchema.Python,partitioned_keys=None):
         if name is None:
@@ -224,13 +231,13 @@ class _SPLInvocation(object):
     def addViewConfig(self, view_configs):
         self.view_configs.append(view_configs)
 
-    def addInputPort(self, name=None, outputPort=None):
+    def addInputPort(self, name=None, outputPort=None, window_config=None):
         if name is None:
             name = self.name + "_IN"+ str(len(self.inputPorts))
         iPortSchema = CommonSchema.Python    
         if not outputPort is None :
             iPortSchema = outputPort.schema        
-        iport = IPort(name, self, len(self.inputPorts),iPortSchema)
+        iport = IPort(name, self, len(self.inputPorts),iPortSchema, window_config)
         self.inputPorts.append(iport)
 
         if not outputPort is None:
@@ -262,6 +269,10 @@ class _SPLInvocation(object):
         _op["config"]["viewConfigs"] = self.view_configs
         if self._placement:
             _op["config"]["placement"] = self._placement
+            if 'resourceTags' in self._placement:
+                # Convert the set to a list for JSON
+                tags = _op['config']['placement']['resourceTags']
+                _op['config']['placement']['resourceTags'] = list(tags)
         _params = {}
         # Add parameters as their string representation
         # unless they value has a spl_json() function,
@@ -279,6 +290,9 @@ class _SPLInvocation(object):
 
         if self.sl is not None:
            _op['sourcelocation'] = self.sl.spl_json()
+
+        if self._layout_hints:
+            _op['layout'] = self._layout_hints
 
         # Callout to allow a ExtensionOperator
         # to augment the JSON
@@ -327,6 +341,22 @@ class _SPLInvocation(object):
             self._placement['explicitColocate'] = colocate_id
         other._placement['explicitColocate'] = colocate_id
 
+    def _layout(self, kind=None, hidden=None):
+        if kind:
+           self._layout_hints['kind'] = str(kind)
+        if hidden:
+           self._layout_hints['hidden'] = True
+
+    def _layout_group(self,kind, name, group_id=None):
+        group = {}
+        if group_id is None:
+            group_id = self.graph._next_layout_group_id()
+        group['id'] = group_id
+        group['name'] = name
+        group['kind'] = kind
+        self._layout_hints['group'] = group
+        return group_id
+
     def _printOperator(self):
         print(self.name+":")
         print("inputs:" + str(len(self.inputPorts)))
@@ -337,11 +367,12 @@ class _SPLInvocation(object):
             print(port.name)
 
 class IPort(object):
-    def __init__(self, name, operator, index, schema):
+    def __init__(self, name, operator, index, schema, window_config):
         self.name = name
         self.operator = operator
         self.index = index
         self.schema = schema
+        self.window_config = window_config
         self.outputPorts = []
 
     def connect(self, oport):
@@ -356,6 +387,8 @@ class IPort(object):
         _iport["name"] = self.name
         _iport["connections"] = [port.name for port in self.outputPorts]
         _iport["type"] = self.schema.schema()
+        if self.window_config is not None:
+            _iport['window'] = self.window_config
         return _iport
 
 class OPort(object):

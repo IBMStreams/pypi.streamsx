@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.1.1.5" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.6.3">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.7.0.alpha">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -53,27 +53,27 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
       <uri index="71" value="com.ibm.streamsx.topology.functional.python2/ForEach"/>
       <uri index="69" value="com.ibm.streamsx.topology.functional.python2/HashAdder"/>
       <uri index="67" value="com.ibm.streamsx.topology.functional.python2/opt/icons/filter_16.gif"/>
-      <uri index="32" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate/aggregate_16.gif"/>
+      <uri index="33" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate/aggregate_16.gif"/>
       <uri index="17" value="com.ibm.streamsx.topology.functional.python/Map"/>
       <uri index="2" value="com.ibm.streamsx.topology.functional.python2/namespace-info.spl"/>
       <uri index="47" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_16.gif"/>
       <uri index="51" value="com.ibm.streamsx.topology.functional.java/FunctionFilter/filter_32.gif"/>
       <uri index="64" value="com.ibm.streamsx.topology.functional.python2/Map/f../opt/icons/transform_32.gif"/>
-      <uri index="33" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate/aggregate_32.gif"/>
+      <uri index="34" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate/aggregate_32.gif"/>
       <uri index="65" value="com.ibm.streamsx.topology.functional.python2/Source"/>
       <uri index="68" value="com.ibm.streamsx.topology.functional.python2/Filter/f../opt/icons/ilter_32.gif"/>
       <uri index="30" value="com.ibm.streamsx.topology.functional.java/PassThrough"/>
       <uri index="48" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_32.gif"/>
-      <uri index="56" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform/functor_16.gif"/>
+      <uri index="57" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform/functor_16.gif"/>
       <uri index="53" value="com.ibm.streamsx.topology.functional.java/FunctionTransform/functor_16.gif"/>
       <uri index="43" value="com.ibm.streamsx.topology.functional.java/FunctionConvertToSPL"/>
-      <uri index="31" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate"/>
-      <uri index="57" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform/functor_32.gif"/>
+      <uri index="32" value="com.ibm.streamsx.topology.functional.java/FunctionAggregate"/>
+      <uri index="58" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform/functor_32.gif"/>
       <uri index="42" value="com.ibm.streamsx.topology.functional.java/FunctionSplit/split_32.gif"/>
       <uri index="21" value="com.ibm.streamsx.topology.functional.python/Filter"/>
       <uri index="26" value="com.ibm.streamsx.topology.functional.python/ForEach"/>
       <uri index="45" value="com.ibm.streamsx.topology.functional.java/FunctionConvertToSPL/functor_32.gif"/>
-      <uri index="55" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform"/>
+      <uri index="56" value="com.ibm.streamsx.topology.functional.java/FunctionMultiTransform"/>
       <uri index="70" value="com.ibm.streamsx.topology.functional.python2/HashAdder/f../opt/icons/transform_32.gif"/>
       <uri index="61" value="com.ibm.streamsx.topology.functional.python2/FlatMap/f../opt/icons/multi_transform_32.gif"/>
       <uri index="27" value="com.ibm.streamsx.topology.file/TextFileReader"/>
@@ -102,11 +102,11 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
       <uri index="18" value="com.ibm.streamsx.topology.functional.python/opt/icons/transform_16.gif"/>
       <uri index="29" value="com.ibm.streamsx.topology.testing/TesterSink"/>
       <uri index="25" value="com.ibm.streamsx.topology.functional.python/HashAdder/f../opt/icons/transform_32.gif"/>
-      <uri index="58" value="com.ibm.streamsx.topology.functional.java/FunctionSink"/>
+      <uri index="31" value="com.ibm.streamsx.topology.functional.java/Source"/>
       <uri index="11" value="com.ibm.streamsx.topology.topic/namespace-info.spl"/>
       <uri index="3" value="com.ibm.streamsx.topology.python/python.spl"/>
       <uri index="19" value="com.ibm.streamsx.topology.functional.python/Map/f../opt/icons/transform_32.gif"/>
-      <uri index="34" value="com.ibm.streamsx.topology.functional.java/FunctionSource"/>
+      <uri index="55" value="com.ibm.streamsx.topology.functional.java/ForEach"/>
       <uri index="46" value="com.ibm.streamsx.topology.functional.java/HashAdder"/>
       <uri index="4" value="com.ibm.streamsx.topology.python/namespace-info.spl"/>
       <uri index="23" value="com.ibm.streamsx.topology.functional.python/Filter/f../opt/icons/ilter_32.gif"/>
@@ -459,11 +459,40 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="31" name="FunctionAggregate" public="true">
+      <primitiveOp language="Java" modelUriIndex="31" name="Source" public="true">
+        <description/>
+        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
+          <description>
+Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
+</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="initDelay" optional="true" type="int64">
+          <description>Delay in seconds before the operator starts producing tuples.</description>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="outputSerializer" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
+          <description/>
+        </outputPort>
+      </primitiveOp>
+      <primitiveOp language="Java" modelUriIndex="32" name="FunctionAggregate" public="true">
         <description/>
         <images>
-          <image size="16" uriIndex="32"/>
-          <image size="32" uriIndex="33"/>
+          <image size="16" uriIndex="33"/>
+          <image size="32" uriIndex="34"/>
         </images>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -489,32 +518,6 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
           <windowPolicy>Windowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
-          <description/>
-        </outputPort>
-      </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="34" name="FunctionSource" public="true">
-        <description/>
-        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
-          <description>
-Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
-</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="initDelay" optional="true" type="int64">
-          <description>Delay in seconds before the operator starts producing tuples.</description>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
-          <description/>
-        </parameter>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
           <description/>
         </outputPort>
@@ -771,11 +774,38 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="55" name="FunctionMultiTransform" public="true">
+      <primitiveOp language="Java" modelUriIndex="55" name="ForEach" public="true">
+        <description/>
+        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
+          <description>
+Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
+</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="tupleSerializer" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <description/>
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
+      </primitiveOp>
+      <primitiveOp language="Java" modelUriIndex="56" name="FunctionMultiTransform" public="true">
         <description/>
         <images>
-          <image size="16" uriIndex="56"/>
-          <image size="32" uriIndex="57"/>
+          <image size="16" uriIndex="57"/>
+          <image size="32" uriIndex="58"/>
         </images>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -802,33 +832,6 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
-          <description/>
-        </outputPort>
-      </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="58" name="FunctionSink" public="true">
-        <description/>
-        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
-          <description>
-Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
-</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <description/>
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-        <outputPort expressionMode="Nonexistent" minNumPorts="0" optional="true" windowPunctOutputMode="Free">
           <description/>
         </outputPort>
       </primitiveOp>

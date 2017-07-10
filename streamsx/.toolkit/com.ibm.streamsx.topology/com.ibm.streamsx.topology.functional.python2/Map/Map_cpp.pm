@@ -1,4 +1,5 @@
 # SPL_CGT_INCLUDE: ../pyspltuple.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_pyTupleTosplTuple.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
 package Map_cpp;
@@ -146,13 +147,128 @@ sub main::generate($$) {
    print '  }', "\n";
    }
    print "\n";
+   print "\n";
    print '  OPort0Type otuple;', "\n";
+   print "\n";
+   if ($pyoutstyle eq 'dict') {
+   print "\n";
+   print '  {', "\n";
+   print '  SplpyGIL lock;', "\n";
+   print '  PyObject * ret = streamsx::topology::Splpy::pyTupleMap(funcop_->callable(), value);', "\n";
+   print '  if (ret == NULL)', "\n";
+   print '     return;', "\n";
+   print '  fromPythonToPort0(ret, otuple);', "\n";
+   print '  Py_DECREF(ret);', "\n";
+   print '  }', "\n";
+   print '  ', "\n";
+    } else { 
+   print "\n";
+   print "\n";
    print '  if (SPLPY_TUPLE_MAP(funcop_->callable(), value,', "\n";
    print '       otuple.get_';
    print $model->getOutputPortAt(0)->getAttributeAt(0)->getName();
    print '(), occ_))', "\n";
+   print "\n";
+   }
+   print "\n";
    print '     submit(otuple, 0);', "\n";
    print '}', "\n";
+   print "\n";
+   if ($pyoutstyle eq 'dict') {
+     # In this case we don't want the function that
+     # converts the Python tuple to an SPL tuple to
+     # copy attributes from the input port
+     my $iport;
+   
+     my $oport = $model->getOutputPortAt(0);
+     my $otupleType = $oport->getSPLTupleType();
+     my @onames = SPL::CodeGen::Type::getAttributeNames($otupleType);
+     my @otypes = SPL::CodeGen::Type::getAttributeTypes($otupleType);
+   
+   print "\n";
+   print '// Create member function that converts Python tuple to SPL tuple', "\n";
+   # Generates a function in an operator that converts a Python
+   # tuple to an SPL tuple for a given port.
+   #
+   # $oport must be set on entry to required output port
+   # $iport can be set to automatically copy input attributes to
+   # output attributes when the Python tuple does not supply a value.
+   
+     my $itypeparam = "";
+     if (defined $iport) {
+        $itypeparam = ", " . $iport->getCppTupleType() . " const & ituple";
+     }
+   print "\n";
+   print ' ', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::fromPythonToPort';
+   print $oport->getIndex();
+   print '(PyObject *pyTuple, ';
+   print $oport->getCppTupleType();
+   print ' & otuple ';
+   print $itypeparam;
+   print ') {', "\n";
+   print "\n";
+   print '  Py_ssize_t frs = PyTuple_GET_SIZE(pyTuple); ', "\n";
+   print '    ', "\n";
+     if (defined $iport) {
+       print 'bool setAttr = false;';
+     }
+   
+     for (my $ai = 0; $ai < $oport->getNumberOfAttributes(); ++$ai) {
+       
+       my $attribute = $oport->getAttributeAt($ai);
+       my $name = $attribute->getName();
+       my $atype = $attribute->getSPLType();
+       splToPythonConversionCheck($atype);
+       
+       if (defined $iport) {
+                print 'setAttr = false;';
+       }
+   print "\n";
+   print '    if (';
+   print $ai;
+   print ' < frs) {', "\n";
+   print '         // Value from the Python function', "\n";
+   print '         PyObject *pyAttrValue = PyTuple_GET_ITEM(pyTuple, ';
+   print $ai;
+   print ');', "\n";
+   print '         if (!SplpyGeneral::isNone(pyAttrValue)) {', "\n";
+   print '                  streamsx::topology::pySplValueFromPyObject(', "\n";
+   print '                               otuple.get_';
+   print $name;
+   print '(), pyAttrValue);', "\n";
+       if (defined $iport) {
+                print 'setAttr = true;';
+       }
+   print "\n";
+   print '      }', "\n";
+   print '   }', "\n";
+       if (defined $iport) {
+       
+       # Only copy attributes across if they match on name and type
+       my $matchInputAttr = $iport->getAttributeByName($name);
+       if (defined $matchInputAttr) {
+          if ($matchInputAttr->getSPLType() eq $attribute->getSPLType()) {
+   print "\n";
+   print '    if (!setAttr) {', "\n";
+   print '      // value from the input attribute', "\n";
+   print '      otuple.set_';
+   print $name;
+   print '(ituple.get_';
+   print $name;
+   print '());', "\n";
+   print '    }', "\n";
+         }
+       }
+      }
+   print "\n";
+   print '         ', "\n";
+   }
+    
+   print "\n";
+   print '}', "\n";
+   }
+   print "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);
    print "\n";

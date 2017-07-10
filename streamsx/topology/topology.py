@@ -62,7 +62,7 @@ The schema for a Python Topology is either:
 * :py:const:`~streamsx.topology.schema.CommonSchema.String` - Each tuple is a Unicode string.
 * :py:const:`~streamsx.topology.schema.CommonSchema.Binary` - Each tuple is a blob.
 * :py:const:`~streamsx.topology.schema.CommonSchema.Json` - Each tuple is a Python dict that can be expressed as a JSON object.
-* Structured - A stream that is an ordered list of attributes, with each attribute having a fixed type (e.g. float64 or int32) and a name.
+* Structured - A stream that has a structured schema of a ordered list of attributes, with each attribute having a fixed type (e.g. float64 or int32) and a name. The schema of a structured stream is defined using :py:const:`~streamsx.topology.schema.StreamSchema`.
 
 Stream processing
 #################
@@ -161,8 +161,6 @@ from __future__ import unicode_literals
 from __future__ import print_function
 from __future__ import division
 from __future__ import absolute_import
-from builtins import super
-from builtins import range
 try:
     from future import standard_library
     standard_library.install_aliases()
@@ -182,6 +180,7 @@ import os
 import time
 import inspect
 import logging
+import datetime
 from enum import Enum
 
 logger = logging.getLogger('streamsx.topology')
@@ -217,8 +216,8 @@ class _SourceLocation(object):
         if self.source_info[2] is not None:
             sl['class'] = self.source_info[2].__name__
         sl['method'] = self.source_info[3]
-        if self.method is not None:
-            sl['topology.method'] = self.method
+        if self.method:
+            sl['api.method'] = self.method
         return sl
 
 class Routing(Enum):
@@ -367,8 +366,9 @@ class Topology(object):
         sl = _SourceLocation(_source_info(), "source")
         name = self.graph._requested_name(name, action='source', func=func)
         op = self.graph.addOperator(self.opnamespace+"::Source", func, name=name, sl=sl)
+        op._layout(kind='Source')
         oport = op.addOutputPort(name=name)
-        return Stream(self, oport)
+        return Stream(self, oport)._make_placeable()
 
     def subscribe(self, topic, schema=CommonSchema.Python, name=None):
         """
@@ -399,12 +399,13 @@ class Topology(object):
         Returns:
             Stream:  A stream whose tuples have been published to the topic by other Streams applications.
         """
-        name = self.graph._requested_name(name, 'subscribe')
+        _name = self.graph._requested_name(name, 'subscribe')
         sl = _SourceLocation(_source_info(), "subscribe")
-        op = self.graph.addOperator(kind="com.ibm.streamsx.topology.topic::Subscribe", sl=sl, name=name)
+        op = self.graph.addOperator(kind="com.ibm.streamsx.topology.topic::Subscribe", sl=sl, name=_name)
         oport = op.addOutputPort(schema=schema, name=name)
         subscribeParams = {'topic': topic, 'streamType': schema}
         op.setParameters(subscribeParams)
+        op._layout_group('Subscribe', name if name else _name)
         return Stream(self, oport)
     
 
@@ -417,6 +418,7 @@ class Stream(object):
     def __init__(self, topology, oport):
         self.topology = topology
         self.oport = oport
+        self._placeable = False
 
     @property
     def name(self):
@@ -444,6 +446,7 @@ class Stream(object):
         name = self.topology.graph._requested_name(name, action="for_each", func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::ForEach", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport, name=self.name)
+        op._layout(kind='ForEach')
 
     def sink(self, func, name=None):
         """
@@ -468,15 +471,16 @@ class Stream(object):
         name = self.topology.graph._requested_name(name, action="filter", func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Filter", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport, name=self.name)
+        op._layout(kind='Filter')
         oport = op.addOutputPort(schema=self.oport.schema, name=name)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport)._make_placeable()
 
     def _map(self, func, schema, name=None):
         name = self.topology.graph._requested_name(name, action="map", func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Map", func, name=name)
         op.addInputPort(outputPort=self.oport, name=self.name)
         oport = op.addOutputPort(schema=schema, name=name)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport)._make_placeable()
 
     def view(self, buffer_time = 10.0, sample_size = 10000, name=None, description=None, start=False):
         """
@@ -510,7 +514,7 @@ class Stream(object):
             name = ''.join(random.choice('0123456789abcdef') for x in range(16))
 
         if self.oport.schema == CommonSchema.Python:
-            view_stream = self.as_json(force_object=False)
+            view_stream = self.as_json(force_object=False)._layout(hidden=True)
             # colocate map operator with stream that is being viewed.
             self.oport.operator.colocate(view_stream.oport.operator, 'view')
         else:
@@ -530,27 +534,44 @@ class Stream(object):
         self.topology.graph.get_views().append(_view)
         return _view
 
-    def map(self, func, name=None):
+    def map(self, func, name=None, schema=None):
         """
         Maps each tuple from this stream into 0 or 1 tuples.
 
-        For each tuple on this stream ``func(tuple)`` is called.
-        If the result is not `None` then the result will be submitted
-        as a tuple on the returned stream. If the result is `None` then
+        For each tuple on this stream ``result = func(tuple)`` is called.
+        If `result` is not `None` then the result will be submitted
+        as a tuple on the returned stream. If `result` is `None` then
         no tuple submission will occur.
-        
+
+        By default the submitted tuple is `result` without modification
+        resulting in a stream of pickable Python objects. Setting the
+        `schema` parameter changes the type of the stream and
+        modifies each `result` before submission.
+
+        * :py:const:`~streamsx.topology.schema.CommonSchema.Python` - The defaullt:  `result` is submitted.
+        * :py:const:`~streamsx.topology.schema.CommonSchema.String` - A stream of strings: ``str(result)`` is submitted.
+        * :py:const:`~streamsx.topology.schema.CommonSchema.Json` - A stream of JSON objects: ``result`` must be convertable to a JSON object using `json` package.
+        * :py:const:`~streamsx.topology.schema.StreamSchema` - A structured stream. `result` must be a (Python) tuple. Each attribute in the structured tuple is set by position from `result`. If the value in `result` is `None` or not present then the attribute has the default value for its type.
+
         Args:
             func: A callable that takes a single parameter for the tuple.
             name(str): Name of the mapped stream, defaults to a generated name.
+            schema(StreamSchema): Schema of the resulting stream.
 
         Returns:
             Stream: A stream containing tuples mapped by `func`.
+
+        .. versionadded:: 1.7 `schema` argument added to allow conversion to
+            a structured stream.
         """
-        return self._map(func, schema=CommonSchema.Python, name=name)
+        if schema is None:
+             schema = CommonSchema.Python
+     
+        return self._map(func, schema=schema, name=name)._layout('Map')
 
     def transform(self, func, name=None):
         """
-        Equivalent to calling :py:meth:`map`.
+        Equivalent to calling :py:meth:``map(func, name)``.
         """
         return self.map(func, name)
              
@@ -581,7 +602,7 @@ class Stream(object):
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::FlatMap", func, name=name, sl=sl)
         op.addInputPort(outputPort=self.oport, name=self.name)
         oport = op.addOutputPort(name=name)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport)._make_placeable()._layout('FlatMap')
     
     def multi_transform(self, func, name=None):
         """
@@ -632,7 +653,7 @@ class Stream(object):
         oport = op.addOutputPort()
         return Stream(self.topology, oport)
     
-    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None):
+    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None, name=None):
         """
         Parallelizes the stream into `width` parallel channels.
         Tuples are routed to parallel channels such that an even distribution is maintained.
@@ -659,13 +680,19 @@ class Stream(object):
             func: Optional function called when :py:const:`Routing.HASH_PARTITIONED` routing is specified.
                 The function provides an integer value to be used as the hash that determines
                 the tuple channel routing.
+            name (str): The name to display for the parallel region.
 
         Returns:
             Stream: A stream for which subsequent transformations will be executed in parallel.
 
         """
+        if name is None:
+            name = self.name
+            
+        name = self.topology.graph._requested_name(name, action='parallel', func=func)
+
         if routing == None or routing == Routing.ROUND_ROBIN:
-            op2 = self.topology.graph.addOperator("$Parallel$")
+            op2 = self.topology.graph.addOperator("$Parallel$", name=name)
             op2.addInputPort(outputPort=self.oport)
             oport = op2.addOutputPort(width)
             return Stream(self.topology, oport)
@@ -683,17 +710,19 @@ class Stream(object):
             if func is not None:
                 keys = ['__spl_hash']
                 hash_adder = self.topology.graph.addOperator(self.topology.opnamespace+"::HashAdder", func)
+                hash_adder._layout(hidden=True)
                 hash_schema = self.oport.schema.extend(StreamSchema("tuple<int64 __spl_hash>"))
                 hash_adder.addInputPort(outputPort=self.oport, name=self.name)
                 parallel_input = hash_adder.addOutputPort(schema=hash_schema)
 
-            parallel_op = self.topology.graph.addOperator("$Parallel$")
+            parallel_op = self.topology.graph.addOperator("$Parallel$", name=name)
             parallel_op.addInputPort(outputPort=parallel_input)
             parallel_op_port = parallel_op.addOutputPort(oWidth=width, schema=parallel_input.schema, partitioned_keys=keys)
 
             if func is not None:
                 # use the Functor passthru operator to remove the hash attribute by removing it from output port schema
                 hrop = self.topology.graph.addPassThruOperator()
+                hrop._layout(hidden=True)
                 hrop.addInputPort(outputPort=parallel_op_port)
                 parallel_op_port = hrop.addOutputPort(schema=self.oport.schema)
 
@@ -720,6 +749,37 @@ class Stream(object):
         oport = op.addOutputPort()
         endP = Stream(self.topology, oport)
         return endP
+
+    def last(self, size=1):
+        """ Declares a window containing most recent tuples on this stream.
+
+        The number of tuples maintained in the window is defined by `size`.
+
+        If `size` is an `int` then it is the count of tuples in the window.
+        For example, with ``size=10`` the window always contains the
+        last (most recent) ten tuples.
+
+        If `size` is an `datetime.timedelta` then it is the duration
+        of the window. With a `timedelta` representing five minutes
+        then the window contains any tuples that arrived in the last
+        five minutes.
+ 
+        Args:
+            size: The size of the window, either an `int` to define the
+                number of tuples or `datetime.timedelta` to define the
+                duration of the window.
+
+        Returns:
+            Window: Window of the last (most recent) tuples on this stream.
+        """
+        win = Window(self, 'SLIDING')
+        if isinstance(size, datetime.timedelta):
+            win._evict_time(size)
+        elif isinstance(size, int):
+            win._evict_count(size)
+        else:
+            raise ValueError(size)
+        return win
 
     def union(self, streamSet):
         """
@@ -815,11 +875,12 @@ class Stream(object):
             self.oport.operator.colocate(schema_change.oport.operator, 'publish')
             return schema_change.publish(topic, schema=schema)
 
-        name = self.topology.graph._requested_name(name, action="publish")
+        _name = self.topology.graph._requested_name(name, action="publish")
         sl = _SourceLocation(_source_info(), "publish")
-        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params={'topic': topic}, sl=sl, name=name)
+        op = self.topology.graph.addOperator("com.ibm.streamsx.topology.topic::Publish", params={'topic': topic}, sl=sl, name=_name)
         op.addInputPort(outputPort=self.oport)
         self.oport.operator.colocate(op, 'publish')
+        op._layout_group('Publish', name if name else _name)
 
     def autonomous(self):
         """
@@ -866,7 +927,7 @@ class Stream(object):
         Returns:
             Stream: Stream containing the string representations of tuples on this stream.
         """
-        return self._change_schema(CommonSchema.String, 'as_string', name)
+        return self._change_schema(CommonSchema.String, 'as_string', name)._layout('AsString')
 
     def as_json(self, force_object=True, name=None):
         """
@@ -901,7 +962,7 @@ class Stream(object):
 
         """
         func = streamsx.topology.runtime._json_force_object if force_object else None
-        return self._change_schema(CommonSchema.Json, 'as_json', name, func)
+        return self._change_schema(CommonSchema.Json, 'as_json', name, func)._layout('AsJson')
 
     def _change_schema(self, schema, action, name=None, func=None):
         """Internal method to change a schema.
@@ -917,6 +978,49 @@ class Stream(object):
         css = self._map(func, schema, name=name)
         self.oport.operator.colocate(css.oport.operator, action)
         return css
+
+    def _make_placeable(self):
+        self._placeable = True
+        return self
+
+    @property
+    def resource_tags(self):
+        """Resource tags for this stream.
+
+        Tags are a mechanism for differentiating and identifying resources that have different physical characteristics or logical uses. For example a resource (host) that has external connectivity for public data sources may be tagged `ingest`.
+
+        A stream can be associated with one or more tags to require its
+        creating callable to run on suitably tagged resources. For example
+        adding tags `ingest` and `db` requires that the processing element
+        containing the callable that created the stream runs on a host
+        tagged with both `ingest` and `db`.
+
+        A stream that was not created directly with a Python callable
+        cannot have tags associated with it. For example a stream that
+        is a :py:meth:`union` of multiple streams cannot be tagged.
+        In this case this method returns an empty `frozenset` which
+        cannot be modified.
+
+        See https://www.ibm.com/support/knowledgecenter/en/SSCRJU_4.2.1/com.ibm.streams.admin.doc/doc/tags.html for more details of tags within IBM Streams.
+
+        Returns:
+            set: Set of resource tags for the stream, initially empty.
+
+        .. warning:: If no resources exist with the required tags then job submission will fail.
+        
+        .. versionadded:: 1.7
+   
+        """
+        if not self._placeable:
+            return frozenset()
+        plc = self.oport.operator._placement
+        if not 'resourceTags' in plc:
+            plc['resourceTags'] = set()
+        return plc['resourceTags']
+
+    def _layout(self, kind=None, hidden=None):
+        self.oport.operator._layout(kind, hidden)
+        return self
 
 
 class View(object):
@@ -1040,3 +1144,74 @@ class PendingStream(object):
             """Has this connection been completed.
             """
             return self._marker.inputPorts
+
+
+class Window(object):
+    """Declaration of a window of tuples on a `Stream`.
+
+    A `Window` can be passed as the input of an SPL
+    operator invocation to indicate the operator's
+    input port is windowed.
+
+    Example invoking the SPL `Aggregate` operator with a sliding window of
+    the last two minutes, triggering every five tuples::
+   
+        win = s.last(datetime.timedelta(minutes=2)).trigger(5)
+
+        agg = op.Map('spl.relational::Aggregate', win,
+                    schema = 'tuple<uint64 sum, uint64 max>')
+        agg.sum = agg.output('Sum(val)')
+        agg.max = agg.output('Max(val)')
+    """
+    def __init__(self, stream, window_type):
+        self.topology = stream.topology
+        self.stream = stream
+        self._config = {'type': window_type}
+
+    def _evict_count(self, size):
+        self._config['evictPolicy'] = 'COUNT'
+        self._config['evictConfig'] = size
+
+    def _evict_time(self, duration):
+        self._config['evictPolicy'] = 'TIME'
+        self._config['evictConfig'] = int(duration.total_seconds() * 1000.0)
+        self._config['evictTimeUnit'] = 'MILLISECONDS'
+
+    def trigger(self, when=1):
+        """Declare a window with this window's size and a trigger policy.
+
+        When the window is triggered is defined by `when`.
+
+        If `when` is an `int` then the window is triggered every
+        `when` tuples.  For example, with ``when=5`` the window
+        will be triggered every five tuples.
+
+        If `when` is an `datetime.timedelta` then it is the period
+        of the trigger. With a `timedelta` representing one minute
+        then the window is triggered every minute.
+
+        By default, when `trigger` has not been called on a `Window`
+        it triggers for every tuple inserted into the window
+        (equivalent to ``when=1``).
+
+        Args:
+            when: The size of the window, either an `int` to define the
+                number of tuples or `datetime.timedelta` to define the
+                duration of the window.
+
+        Returns:
+            Window: Window that will be triggered.
+    """
+        tw = Window(self.stream, self._config['type'])
+        tw._config['evictPolicy'] = self._config['evictPolicy']
+        tw._config['evictConfig'] = self._config['evictConfig']
+        if isinstance(when, datetime.timedelta):
+            tw._config['triggerPolicy'] = 'TIME'
+            tw._config['triggerConfig'] = int(when.total_seconds() * 1000.0)
+            tw._config['triggerTimeUnit'] = 'MILLISECONDS'
+        elif isinstance(when, int):
+            tw._config['triggerPolicy'] = 'COUNT'
+            tw._config['triggerConfig'] = when
+        else:
+            raise ValueError(when)
+        return tw
