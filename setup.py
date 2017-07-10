@@ -22,6 +22,6 @@ setup(
   ],
   install_requires=['requests', 'future', 'dill', 'enum34'],
   entry_points = {
-        'console_scripts': ['streamx-runner=streamsx.scripts.streamsx-runner:main'],
+        'console_scripts': ['streamx-runner=streamsx.scripts.runner:main'],
   }
 )
