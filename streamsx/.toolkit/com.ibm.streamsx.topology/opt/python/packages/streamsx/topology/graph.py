@@ -148,27 +148,38 @@ class SPLGraph(object):
         _graph['config']['spl'] = {}
         _graph['config']['spl']['toolkits'] = self._spl_toolkits
         _ops = []
-        self.addModules(_graph["config"]["includes"])
-        self.addPackages(_graph["config"]["includes"])
+        self._add_modules(_graph["config"]["includes"])
+        self._add_packages(_graph["config"]["includes"])
+        self._add_files(_graph["config"]["includes"])
         for op in self.operators:
             _ops.append(op.generateSPLOperator())
 
         _graph["operators"] = _ops
         return _graph
    
-    def addPackages(self, includes):
+    def _add_packages(self, includes):
         for package_path in self.resolver.packages:
            mf = {}
            mf["source"] = package_path
            mf["target"] = "opt/python/packages"
            includes.append(mf)
 
-    def addModules(self, includes):
+    def _add_modules(self, includes):
         for module_path in self.resolver.modules:
            mf = {}
            mf["source"] = module_path
            mf["target"] = "opt/python/modules"
            includes.append(mf)
+
+    def _add_files(self, includes):
+         fls = self.topology._files
+         for location in fls:
+             files = fls[location]
+             for path in files:
+                 f = {}
+                 f["source"] = path
+                 f["target"] = location
+                 includes.append(f)
 
     def getLastOperator(self):
         return self.operators[len(self.operators) -1]      
@@ -341,11 +352,20 @@ class _SPLInvocation(object):
             self._placement['explicitColocate'] = colocate_id
         other._placement['explicitColocate'] = colocate_id
 
-    def _layout(self, kind=None, hidden=None):
+    def _layout(self, kind=None, hidden=None, name=None, orig_name=None):
         if kind:
            self._layout_hints['kind'] = str(kind)
         if hidden:
            self._layout_hints['hidden'] = True
+        if name:
+            self._layout_map_name(name, orig_name)
+
+
+    def _layout_map_name(self, name, orig_name):
+        if orig_name and name != orig_name:
+            if 'names' not in self._layout_hints:
+                self._layout_hints['names'] = dict()
+            self._layout_hints['names'][name] = orig_name
 
     def _layout_group(self,kind, name, group_id=None):
         group = {}

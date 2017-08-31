@@ -20,6 +20,8 @@ using namespace streamsx::topology;
  my $functionName = splpy_FunctionName();
  my $paramStyle = splpy_ParamStyle();
  my $fixedParam = splpy_FixedParam();
+ my @packages = splpy_Packages();
+ spl_pip_packages($model, \@packages);
  
  my $iport = $model->getInputPortAt(0);
  my $itupleType = $iport->getSPLTupleType();
@@ -104,6 +106,8 @@ void MY_OPERATOR::prepareToShutdown()
 // Tuple processing for non-mutating ports
 void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 {
+ @include  "../../opt/.__splpy/common/py_splTupleCheckForBlobs.cgt"
+
    std::vector<OPort0Type> output_tuples;  
    {
     // Don't hold the lock across submission

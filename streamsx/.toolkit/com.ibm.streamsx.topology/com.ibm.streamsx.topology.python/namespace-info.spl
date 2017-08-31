@@ -448,8 +448,9 @@ of an SPL toolkit.
 Each module must import the `streamsx.spl`
 package which is located in the `opt/packages` directory of this toolkit.
 It contains the decorators use to create SPL operators from Python functions.
-The module must also define a function `splNamespace` that returns a string
+The module must also define a function `spl_namespace` that returns a string
 containing the SPL namespace the operators for that module will be placed in.
+`splNamespace` is also accepted as a function to define the SPL namespace.
 
 For example:
 
@@ -459,7 +460,7 @@ For example:
 
     # Defines the SPL namespace for any functions in this module
     # Multiple modules can map to the same namespace
-    def splNamespace():
+    def spl_namespace():
        return "com.ibm.streamsx.topology.pysamples.mail"
 
 Decorating a Python class produces a stateful SPL operator. The instance fields of the class are the state for the operator. Any parameters to the
@@ -548,13 +549,78 @@ its conversion to a Python tuple.
         "Print each tuple to standard out."
          print(tuple, flush=True)
 
+++ Dependent Python packages
+
+The decorated Python classes and functions used for SPL operators can
+depend on additional Python packages or modules.
+
+Dependent Python packages can either be stored in the toolkit
+or installed using `pip` during SPL compilation.
+
+# Packages & modules stored in the SPL toolkit
+
+These directories in a toolkit are automatically added to the Python search path during execution of an operator.
+ * `opt/python/streams` - Contains modules that define Python callables that will be created as SPL operators
+ * `opt/python/packages` - Root directory for Python [https://docs.python.org/3.4/tutorial/modules.html#packages|packages] hierarchy.
+ * `opt/python/modules` - Arbitrary [https://docs.python.org/3.4/tutorial/modules.html#modules|modules], not defined as a packages.
+
+By default all of these directories are included in the Streams
+application bundle (`sab`) for a compiled application.
+
+Thus any packages or modules stored in those directories are part
+of the toolkit, thus increasing the distribution size of the toolkit.
+
+# Packages installed by pip at SPL compile time
+
+Python packages can be requested to be installed during the SPL
+compilation using `pip install --user`. The packages are installed locally into
+the compliation's output directory, thus becoming part of the
+Streams application bundle (`sab`). The packages will be installed
+from [https://pypi.python.org/pypi|PyPi].
+
+During SPL compilation (`sc`) `pip` must be in the user's PATH.
+
+Any required packages and their dependencies are added to the `sab`
+if they are not globally installed. Thus there is an assumption that
+the compile machines and runtime machines have an identical set of
+globally installed packages. This is guaranteed for the Streaming
+Analytics service on the IBM Bluemix cloud platform.
+
+For example is there was a dependency on `numpy` and `geocoder` and
+`numpy` was globally installed then only `geocoder` would be installed
+into the compliation's output directory (in addition to any dependencies
+`geocoder` has that were not globally installed).
+
+**Tookit wide requirements**
+
+If the file `opt/python/streams/requirements.txt` exists in the
+toolkit then it is taken as a pip requirements file. During
+SPL compilation it will be passed to `pip` using the `-requirement` flag
+for installation of the required packages into the output directory.
+
+See: [https://pip.pypa.io/en/stable/user_guide/#requirements-files]
+
+**Module specific requirements**
+
+A module containing SPL primitive operator decorated clases and functions
+can specify a list of packages (or more precisely
+[https://pip.pypa.io/en/stable/reference/pip_install/#requirement-specifiers|requirement specifiers])
+using the function `spl_pip_packages`.
+
+    # Packages geocoder and python-goehash will be installed
+    # into the sab for the application invoking any operator
+    # in this module unless they are globally installed at
+    # SPL (sc) compile time.
+    def spl_pip_packages():
+        return ['geocoder', 'python-geohash']
+
 ++ Processing SPL tuples in Python
 
 SPL tuples are converted to Python objects and passed to a decorated callable.
 
 # Overview
 
-For each SPL tuple arriving at an input port a Python function is called with
+For each SPL tuple arriving at an input port a Python callable is invoked with
 the SPL tuple converted to Python values suitable for the function call.
 How the tuple is passed is defined by the tuple passing style.
 
@@ -872,6 +938,7 @@ The list may be empty resulting in no tuples being submitted.
 A limited set of SPL types are supported.
 
  * **Primitive types**
+  * `blob` - maps to a Python `memoryview`
   * `boolean` - maps to Python `Boolean`
   * `int8`, `int16`, `int32`, `int64` - maps to Python `int`
   * `uint8`, `uint16`, `uint32`, `uint64` - maps to Python `int`
@@ -880,8 +947,21 @@ A limited set of SPL types are supported.
   * `rstring`, `ustring` - maps to Python `String` - `rstring` values assume UTF-8 encoding
  * **Collection types**
   * `list<T>` where `T` is any supported type. Passed into Python as a list.
-  * `set<T>` where `T` is any supported primitive type. Passed into Python as a set. `T` must be primitive to match Python's requirement that an element of a set is hashable.
-  * `map<K,V>` where `K` is any supported primitive type and `V` is any supported type. Passed into Python as a dictionary.  `K` must be primitive to match Python's requirement that a key of a map is hashable.
+  * `set<T>` where `T` is any supported primitive type except `blob`. Passed into Python as a set. `T` must be primitive to match Python's requirement that an element of a set is hashable.
+  * `map<K,V>` where `K` is any supported primitive type expect `blob` and `V` is any supported type. Passed into Python as a dictionary.  `K` must be primitive to match Python's requirement that a key of a map is hashable.
+
++++ SPL blob handling
+
+A SPL `blob` value is passed into Python as a `memoryview` object to
+avoid copying the contents of the value. The `memoryview` object will
+be released after the callable returns and thus any further use of
+it will throw a `ValueError`. 
+
+Thus if the callable wants to maintain the value after the call it
+must copy the required information from the `memoryview` before returning.
+
+The `memoryview` object may be safely returned by the callable as part
+of a tuple to be submitted.
 
 ++ \@spl decorator options
 \@spl decorators support an number of options.
@@ -1171,7 +1251,7 @@ Operator to send an e-mail for each tuple using the local SMTP server.
     
     server = smtplib.SMTP('localhost')
 
-    def splNamespace():
+    def spl_namespace():
         return "com.ibm.streamsx.topology.pysamples.mail"
 
     # Decorate this function as a sink operator
@@ -1201,7 +1281,7 @@ To create SPL operators in a toolkit, execute:
 Any Python module in the toolkit's `opt/python/streams` directory will have its decorated classes and functions converted to SPL operators.
 
 These directories in a toolkit are automatically added to the Python search path during execution of an operator.
- * `opt/python/streams` - Contains modules that define Python functions that will be created as SPL operators
+ * `opt/python/streams` - Contains modules that define Python callables that will be created as SPL operators
  * `opt/python/packages` - Root directory for Python [https://docs.python.org/3.4/tutorial/modules.html#packages|packages] hierarchy.
  * `opt/python/modules` - Arbitrary [https://docs.python.org/3.4/tutorial/modules.html#modules|modules], not defined as a packages.
  * `impl/nl` - The directory for the resource files.

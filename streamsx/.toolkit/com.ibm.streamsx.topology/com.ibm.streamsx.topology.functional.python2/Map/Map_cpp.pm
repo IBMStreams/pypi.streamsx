@@ -1,5 +1,6 @@
-# SPL_CGT_INCLUDE: ../pyspltuple.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_pyTupleTosplTuple.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
 package Map_cpp;
@@ -135,6 +136,20 @@ sub main::generate($$) {
    print "\n";
    print '// process the attributes in the spl tuple', "\n";
    print '// into a python dictionary object', "\n";
+   # Fix up names for blobs script
+   my $inputAttrs2Py = $pynumattrs;
+   my @itypes = @pyatypes;
+   print "\n";
+      #Check if a blob exists in the input schema
+      for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
+         if (typeHasBlobs($itypes[$i])) {
+   print "\n";
+   print '   PYSPL_MEMORY_VIEW_CLEANUP();', "\n";
+            last;
+         }
+      }
+   print "\n";
+   print "\n";
    print '  PyObject *value = 0;', "\n";
    print '  {', "\n";
    print '  SplpyGIL lockdict;', "\n";
