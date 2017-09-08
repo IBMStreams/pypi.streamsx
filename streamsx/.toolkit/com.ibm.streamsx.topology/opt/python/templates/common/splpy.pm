@@ -48,7 +48,10 @@ sub splToPythonConversionCheck{
     elsif(SPL::CodeGen::Type::isUnsigned($type)) {
       return;
     } 
-    elsif(SPL::CodeGen::Type::isFloatingpoint($type)) {
+    elsif(SPL::CodeGen::Type::isFloat($type)) {
+      return;
+    } 
+    elsif(SPL::CodeGen::Type::isDecimal($type)) {
       return;
     } 
     elsif (SPL::CodeGen::Type::isRString($type) || SPL::CodeGen::Type::isBString($type)) {
