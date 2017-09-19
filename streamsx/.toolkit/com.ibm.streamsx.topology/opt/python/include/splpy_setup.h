@@ -32,13 +32,7 @@
 #include <TopologySplpyResource.h>
 
 #include <SPL/Runtime/Common/RuntimeException.h>
-#include <SPL/Runtime/Type/Meta/BaseType.h>
 #include <SPL/Runtime/ProcessingElement/PE.h>
-#include <SPL/Runtime/Operator/Port/OperatorPort.h>
-#include <SPL/Runtime/Operator/Port/OperatorInputPort.h>
-#include <SPL/Runtime/Operator/Port/OperatorOutputPort.h>
-#include <SPL/Runtime/Operator/OperatorContext.h>
-#include <SPL/Runtime/Operator/Operator.h>
 
 #include "splpy_sym.h"
 #include "splpy_ec.h"
@@ -299,6 +293,10 @@ class SplpySetup {
           throw SplpyGeneral::pythonException("splpy_setup.py");
         }
         SPLAPPTRC(L_DEBUG, "Python script splpy_setup.py ran ok.", "python");
+
+#if __SPLPY_EC_MODULE_OK
+        SplpyGeneral::callVoidFunction("streamsx.ec", "_setup", NULL, NULL);
+#endif
     }
 };
 
