@@ -177,7 +177,7 @@ except (ImportError,NameError):
 
 import random
 from streamsx.topology import graph
-from streamsx.topology.schema import StreamSchema, CommonSchema
+from streamsx.topology.schema import StreamSchema, CommonSchema, _SCHEMA_PENDING
 import streamsx.topology.functions
 import streamsx.topology.runtime
 import json
@@ -368,7 +368,7 @@ class Topology(object):
             if _name is None:
                 _name = type(func).__name__
             func = streamsx.topology.functions._IterableInstance(func)
-        
+
         sl = _SourceLocation(_source_info(), "source")
         _name = self.graph._requested_name(_name, action='source', func=func)
         op = self.graph.addOperator(self.opnamespace+"::Source", func, name=_name, sl=sl)
@@ -503,6 +503,7 @@ class Stream(object):
         _name = self.topology.graph._requested_name(name, action='for_each', func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::ForEach", func, name=_name, sl=sl)
         op.addInputPort(outputPort=self.oport, name=self.name)
+        StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         op._layout(kind='ForEach', name=_name, orig_name=name)
         return Sink(op)
 
@@ -532,6 +533,7 @@ class Stream(object):
         _name = self.topology.graph._requested_name(name, action="filter", func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Filter", func, name=_name, sl=sl)
         op.addInputPort(outputPort=self.oport, name=self.name)
+        StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         op._layout(kind='Filter', name=_name, orig_name=name)
         oport = op.addOutputPort(schema=self.oport.schema, name=_name)
         return Stream(self.topology, oport)._make_placeable()
@@ -540,6 +542,7 @@ class Stream(object):
         _name = self.topology.graph._requested_name(name, action="map", func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Map", func, name=_name)
         op.addInputPort(outputPort=self.oport, name=self.name)
+        StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         oport = op.addOutputPort(schema=schema, name=_name)
         op._layout(name=_name, orig_name=name)
         return Stream(self.topology, oport)._make_placeable()
@@ -627,7 +630,7 @@ class Stream(object):
             a structured stream.
         """
         if schema is None:
-             schema = CommonSchema.Python
+            schema = CommonSchema.Python
      
         ms = self._map(func, schema=schema, name=name)._layout('Map')
         ms.oport.operator.sl = _SourceLocation(_source_info(), 'map')
@@ -668,6 +671,7 @@ class Stream(object):
         _name = self.topology.graph._requested_name(name, action='flat_map', func=func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::FlatMap", func, name=_name, sl=sl)
         op.addInputPort(outputPort=self.oport, name=self.name)
+        StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         oport = op.addOutputPort(name=_name)
         return Stream(self.topology, oport)._make_placeable()._layout('FlatMap', name=_name, orig_name=name)
     
@@ -784,6 +788,7 @@ class Stream(object):
                 hash_adder._layout(hidden=True)
                 hash_schema = self.oport.schema.extend(StreamSchema("tuple<int64 __spl_hash>"))
                 hash_adder.addInputPort(outputPort=self.oport, name=self.name)
+                StreamSchema._fnop_style(self.oport.schema, hash_adder, 'pyStyle')
                 parallel_input = hash_adder.addOutputPort(schema=hash_schema)
 
             parallel_op = self.topology.graph.addOperator("$Parallel$", name=_name)
@@ -1202,7 +1207,7 @@ class PendingStream(object):
         def __init__(self, topology):
             self.topology = topology
             self._marker = topology.graph.addOperator(kind="$Pending$")
-            self._pending_schema = StreamSchema('<pending')
+            self._pending_schema = StreamSchema(_SCHEMA_PENDING)
 
             self.stream = Stream(topology, self._marker.addOutputPort(schema=self._pending_schema))
 
@@ -1221,7 +1226,7 @@ class PendingStream(object):
             # Update the pending schema to the actual schema
             # Any downstream filters that took the reference
             # will be automatically updated to the correct schema
-            self._pending_schema._set(stream.oport.schema)
+            self._pending_schema._set(self.stream.oport.schema)
 
             # Mark the operator with the pending stream
             # a start point for graph travesal
@@ -1292,6 +1297,9 @@ class Window(object):
         tw = Window(self.stream, self._config['type'])
         tw._config['evictPolicy'] = self._config['evictPolicy']
         tw._config['evictConfig'] = self._config['evictConfig']
+        if self._config['evictPolicy'] == 'TIME':
+            tw._config['evictTimeUnit'] = 'MILLISECONDS'
+
         if isinstance(when, datetime.timedelta):
             tw._config['triggerPolicy'] = 'TIME'
             tw._config['triggerConfig'] = int(when.total_seconds() * 1000.0)
@@ -1302,6 +1310,41 @@ class Window(object):
         else:
             raise ValueError(when)
         return tw
+
+    def aggregate(self, function, name=None):
+        """Aggregates the contents of the window when the window is
+        triggered.
+        
+        Upon a window trigger, the supplied function is passed a list containing 
+        the contents of the window: ``function(items)``. The order of the window 
+        items in the list are the order in which they were each received by the 
+        window. If the function's return value is not `None` then the result will
+        be submitted as a tuple on the returned stream. If the return value is 
+        `None` then no tuple submission will occur. For example, a window that 
+        calculates a moving average of the last 10 tuples could be written as follows::
+        
+            win = s.last(10).trigger(1)
+            moving_averages = win.aggregate(lambda tuples: sum(tuples)/len(tuples))
+            
+        Args:
+            function: The function which aggregates the contents of the window
+            name(str): The name of the returned stream. Defaults to a generated name.
+
+        Returns: 
+            Stream: A `Stream` of the returned values of the supplied function.                                                                                                                                                             
+        .. versionadded:: 1.8
+        """
+        schema = CommonSchema.Python
+        
+        sl = _SourceLocation(_source_info(), "aggregate")
+        name = self.topology.graph._requested_name(name, action="aggregate", func=function)
+        op = self.topology.graph.addOperator(self.topology.opnamespace+"::Aggregate", function, name=name, sl=sl)
+        op.addInputPort(outputPort=self.stream.oport, name=self.stream.name, window_config=self._config)
+        oport = op.addOutputPort(schema=schema, name=name)
+
+        return Stream(self.topology, oport)
+
+
 
 class Sink(object):
     """

@@ -1,6 +1,8 @@
-# SPL_CGT_INCLUDE: ../pyspltuple.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple2tuple.cgt
 
 package ForEach_cpp;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
@@ -28,19 +30,19 @@ sub main::generate($$) {
    
     require $pydir."/codegen/splpy.pm";
    
-    # setup the variables used when processing spltuples
-    my $pyport = $model->getInputPortAt(0);
-    my $pytupleType = $pyport->getSPLTupleType();
-    my @pyanames = SPL::CodeGen::Type::getAttributeNames($pytupleType);
-    my @pyatypes = SPL::CodeGen::Type::getAttributeTypes($pytupleType);
-   
-    my $pynumattrs = $pyport->getNumberOfAttributes();
-    
-    my $pytuple = $pyport->getCppTupleName();
+    # Currently function operators only have a single input port
+    # and take all the input attributes
+    my $iport = $model->getInputPortAt(0);
+    my $inputAttrs2Py = $iport->getNumberOfAttributes();
    
     # determine which input tuple style is being used
    
-    my $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
+    my $pystyle = $model->getParameterByName("pyStyle");
+    if ($pystyle) {
+        $pystyle = substr $pystyle->getValueAt(0)->getSPLExpression(), 1, -1;
+    } else {
+        $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
+    }
    print "\n";
    print "\n";
     # Select the Python wrapper function
@@ -89,22 +91,47 @@ sub main::generate($$) {
    print '// Tuple processing for non-mutating ports', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
-   print '  IPort0Type const &ip = static_cast<IPort0Type const &>(tuple);', "\n";
+   # Takes the input SPL tuple and converts it to
+   # the arguments needed to be passed to a Python
+   # functional operator
+   
+   # Variables that need to be set:
+   
+   # $pyStyle - tuple or dictionary
+   # $iport - input port 
+   # $inputAttrs2Py - number of attributes to pass as tuple style
    print "\n";
-   print splpy_inputtuple2value($pystyle);
    print "\n";
+   print '    ';
+   print $iport->getCppTupleType();
+   print ' const & ';
+   print $iport->getCppTupleName();
+   print ' = static_cast< ';
+   print $iport->getCppTupleType();
+   print ' const &>(tuple);', "\n";
+   print "\n";
+   print splpy_inputtuple2value($pystyle, $iport);
    if ($pystyle eq 'dict') {
    print "\n";
+   # Takes the input SPL tuple and converts it to
+   # as a dict to be passed to a Python functional operator
+   #
+   # Leaves the C++ variable value set to a PyObject * dict.
+   
+   # Variables that need to be set:
+   # $iport - input port 
    print "\n";
-   print '// process the attributes in the spl tuple', "\n";
-   print '// into a python dictionary object', "\n";
-   # Fix up names for blobs script
-   my $inputAttrs2Py = $pynumattrs;
-   my @itypes = @pyatypes;
    print "\n";
+   # Perl Variables that need to be set:
+   #
+   # $iport - input port 
+   #
+   # $inputAttrs2Py - number of attributes to pass as tuple style
+   #
+   
       #Check if a blob exists in the input schema
       for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
-         if (typeHasBlobs($itypes[$i])) {
+         if (typeHasBlobs($iport->getAttributeAt($i)->getSPLType())) {
    print "\n";
    print '   PYSPL_MEMORY_VIEW_CLEANUP();', "\n";
             last;
@@ -116,13 +143,39 @@ sub main::generate($$) {
    print '  {', "\n";
    print '  SplpyGIL lockdict;', "\n";
    print '  PyObject * pyDict = PyDict_New();', "\n";
-        for (my $i = 0; $i < $pynumattrs; ++$i) {
-            print convertAndAddToPythonDictionaryObject("ip", $i, $pyatypes[$i], $pyanames[$i], 'pyInNames_');
+        for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
+            my $la = $iport->getAttributeAt($i);
+            print convertAndAddToPythonDictionaryObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), 'pyInNames_');
         }
    print "\n";
    print '  value = pyDict;', "\n";
    print '  }', "\n";
-   }
+    } elsif ($pystyle eq 'tuple') { 
+   print "\n";
+   # Takes the input SPL tuple and converts it to
+   # as a tuple to be passed to a Python functional operator
+   #
+   # Leaves the C++ variable value set to a PyObject * dict.
+   
+   # Variables that need to be set:
+   # $iport - input port 
+   print "\n";
+   print "\n";
+   print '  PyObject *value = 0;', "\n";
+   print '  {', "\n";
+   print '  SplpyGIL locktuple;', "\n";
+   print '  PyObject * pyTuple = PyTuple_New(';
+   print $inputAttrs2Py;
+   print ');', "\n";
+        for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
+            my $la = $iport->getAttributeAt($i);
+            print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName());
+        }
+   print "\n";
+   print '  value = pyTuple;', "\n";
+   print '  }', "\n";
+    } 
+   print "\n";
    print "\n";
    print '  streamsx::topology::Splpy::pyTupleForEach(funcop_->callable(), value);', "\n";
    print '}', "\n";

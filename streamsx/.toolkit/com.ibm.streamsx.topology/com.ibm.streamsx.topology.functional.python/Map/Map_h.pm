@@ -24,19 +24,19 @@ sub main::generate($$) {
    
     require $pydir."/codegen/splpy.pm";
    
-    # setup the variables used when processing spltuples
-    my $pyport = $model->getInputPortAt(0);
-    my $pytupleType = $pyport->getSPLTupleType();
-    my @pyanames = SPL::CodeGen::Type::getAttributeNames($pytupleType);
-    my @pyatypes = SPL::CodeGen::Type::getAttributeTypes($pytupleType);
-   
-    my $pynumattrs = $pyport->getNumberOfAttributes();
-    
-    my $pytuple = $pyport->getCppTupleName();
+    # Currently function operators only have a single input port
+    # and take all the input attributes
+    my $iport = $model->getInputPortAt(0);
+    my $inputAttrs2Py = $iport->getNumberOfAttributes();
    
     # determine which input tuple style is being used
    
-    my $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
+    my $pystyle = $model->getParameterByName("pyStyle");
+    if ($pystyle) {
+        $pystyle = substr $pystyle->getValueAt(0)->getSPLExpression(), 1, -1;
+    } else {
+        $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
+    }
    print "\n";
    print "\n";
     my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
@@ -61,9 +61,7 @@ sub main::generate($$) {
    print 'private:', "\n";
    if ($pyoutstyle eq 'dict') {
    print "\n";
-   print '    void fromPythonToPort0(PyObject * pyTuple, ';
-   print $oport->getCppTupleType();
-   print ' & otuple);', "\n";
+   print '    void fromPythonToPort0(PyObject * pyTuple);', "\n";
    }
    print "\n";
    print "\n";

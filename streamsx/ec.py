@@ -442,8 +442,8 @@ def _get_opc(obj):
         raise AssertionError("InternalError")
 
 def _shutdown_op(callable):
-    if hasattr(callable, '_shutdown'):
-        callable._shutdown()
+    if hasattr(callable, '_splpy_shutdown'):
+        callable._splpy_shutdown()
 
 def _callable_enter(callable):
     """Called at initialization time.
@@ -456,6 +456,12 @@ def _callable_exit_clean(callable):
     """
     if hasattr(callable, '__enter__') and hasattr(callable, '__exit__'):
         callable.__exit__(None, None, None)
+
+def _submit(primitive, port_index, tuple_):
+    """Internal method to submit a tuple"""
+    tuple_ = primitive._splpy_conv_fns[port_index](tuple_)
+    args = (_get_opc(primitive), port_index, tuple_)
+    _ec._submit(args)
 
 #
 # Application Trace & Log

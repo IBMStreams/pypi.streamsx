@@ -31,6 +31,24 @@
 #include <SPL/Runtime/Common/Metric.h>
 #include <SPL/Runtime/Function/UtilFunctions.h>
 
+namespace streamsx {
+  namespace topology {
+
+/**
+ * An "interface" for a SPL python primtive operator
+ * that can submit tuples from Python code. This allows
+ * the python code through __splpy_ec_submit to submit
+ * a tuple to an output port directly.
+ */
+class SplpyPrimitiveOp
+{
+    public:
+        virtual ~SplpyPrimitiveOp() {} 
+        virtual void convertAndSubmit(uint32_t port, PyObject *tuple_) = 0;
+};
+
+}}
+
 extern "C" {
 
 /**
@@ -77,8 +95,16 @@ static PyObject * __splpy_ec_get_app_config(PyObject *self, PyObject *pyname) {
    SPL::rstring name;
    streamsx::topology::pySplValueFromPyObject(name, pyname);
 
+   int rc;
    SPL::map<SPL::rstring, SPL::rstring> properties;
-   if (SPL::Functions::Utility::getApplicationConfiguration(properties, name) ==  0)
+
+   Py_BEGIN_ALLOW_THREADS
+
+   rc = SPL::Functions::Utility::getApplicationConfiguration(properties, name);
+
+   Py_END_ALLOW_THREADS
+
+   if (rc == 0)
        return streamsx::topology::pySplValueToPyObject(properties);
 
    return streamsx::topology::SplpyGeneral::getBool(false);
@@ -106,12 +132,22 @@ static PyObject * __splpy_ec_app_trc(PyObject *self, PyObject *args) {
        PyObject *pyfunc = PyTuple_GET_ITEM(args, 4);
        PyObject *pyline = PyTuple_GET_ITEM(args, 5);
 
+       const SPL::rstring &aspects = streamsx::topology::pyRstringFromPyObject(pyaspects);
+       const SPL::rstring &func  = streamsx::topology::pyRstringFromPyObject(pyfunc);
+       const SPL::rstring &file  = streamsx::topology::pyRstringFromPyObject(pyfile);
+       const SPL::rstring &msg  = streamsx::topology::pyRstringFromPyObject(pymsg);
+       int line = (int) PyLong_AsLong(pyline);
+
+       Py_BEGIN_ALLOW_THREADS
+
        Distillery::debug::write_appmsg(ilvl,
-          SPL::splAppTrcAspect(streamsx::topology::pyRstringFromPyObject(pyaspects)),
-          streamsx::topology::pyRstringFromPyObject(pyfunc),
-          streamsx::topology::pyRstringFromPyObject(pyfile),
-          (int) PyLong_AsLong(pyline),
-          streamsx::topology::pyRstringFromPyObject(pymsg));
+          SPL::splAppTrcAspect(aspects),
+          func,
+          file,
+          line,
+          msg);
+
+       Py_END_ALLOW_THREADS
    }
  
    // Any return is going to be ignored (maybe)
@@ -158,12 +194,21 @@ static PyObject * __splpy_ec_app_log(PyObject *self, PyObject *args) {
        PyObject *pyfunc = PyTuple_GET_ITEM(args, 4);
        PyObject *pyline = PyTuple_GET_ITEM(args, 5);
 
+       const SPL::rstring &aspects = streamsx::topology::pyRstringFromPyObject(pyaspects);
+       const SPL::rstring &func  = streamsx::topology::pyRstringFromPyObject(pyfunc);
+       const SPL::rstring &file  = streamsx::topology::pyRstringFromPyObject(pyfile);
+       const SPL::rstring &msg  = streamsx::topology::pyRstringFromPyObject(pymsg);
+       int line = (int) PyLong_AsLong(pyline);
+
+       Py_BEGIN_ALLOW_THREADS
+
        Distillery::debug::write_log(ilvl,
-          SPL::splAppLogAspect(streamsx::topology::pyRstringFromPyObject(pyaspects)),
-          streamsx::topology::pyRstringFromPyObject(pyfunc),
-          streamsx::topology::pyRstringFromPyObject(pyfile),
-          (int) PyLong_AsLong(pyline),
-          streamsx::topology::pyRstringFromPyObject(pymsg));
+          SPL::splAppLogAspect(aspects),
+          func,
+          file,
+          line,
+          msg);
+       Py_END_ALLOW_THREADS
      }
    }
  
@@ -216,10 +261,19 @@ static PyObject * __splpy_ec_create_custom_metric(PyObject *self, PyObject *args
    
    SPL::Metric::Kind kind = static_cast<SPL::Metric::Kind>(PyLong_AsLong(pykind));
 
-   SPL::Metric & cm = metrics.createCustomMetric(name, desc, kind);
-   cm.setValue(PyLong_AsLong(pyvalue));
+   int64_t value = PyLong_AsLong(pyvalue);
 
-   return PyLong_FromVoidPtr(reinterpret_cast<void *>(&cm));
+   void * cmptr = NULL;
+
+   Py_BEGIN_ALLOW_THREADS
+
+   SPL::Metric &cm = metrics.createCustomMetric(name, desc, kind);
+   cm.setValue(value);
+   cmptr = reinterpret_cast<void *>(&cm);
+
+   Py_END_ALLOW_THREADS
+
+   return PyLong_FromVoidPtr(cmptr);
 }
 static PyObject * __splpy_ec_metric_get(PyObject *self, PyObject *pymptr){
    SPL::Metric * cm = reinterpret_cast<SPL::Metric *>(PyLong_AsVoidPtr(pymptr));
@@ -252,6 +306,26 @@ static PyObject * __splpy_ec_metric_set(PyObject *self, PyObject *args){
    // so return an existing object with its reference bumped
    Py_INCREF(pyvalue);
    return pyvalue;
+}
+
+// Submit a tuple to the output ports of a primitive operator.
+static PyObject * __splpy_ec_submit(PyObject *self, PyObject *args) {
+   PyObject *opc = PyTuple_GET_ITEM(args, 0);
+   PyObject *pyport = PyTuple_GET_ITEM(args, 1);
+   PyObject *pytuple = PyTuple_GET_ITEM(args, 2);
+
+   void * opptr = PyLong_AsVoidPtr(opc);
+   SPL::Operator *op = reinterpret_cast<SPL::Operator*>(opptr);
+   streamsx::topology::SplpyPrimitiveOp *op2 = dynamic_cast<streamsx::topology::SplpyPrimitiveOp*>(op);
+
+   uint32_t port = (uint32_t) PyLong_AsLong(pyport);
+
+   op2->convertAndSubmit(port, pytuple);
+
+   // Any return is going to be ignored
+   // so return an existing object with its reference bumped
+   Py_INCREF(pyport);
+   return pyport;
 }
 
 static PyMethodDef __splpy_ec_methods[] = {
@@ -291,6 +365,8 @@ static PyMethodDef __splpy_ec_methods[] = {
          "Increment metric value."},
     {"metric_set", __splpy_ec_metric_set, METH_O,
          "Set metric value."},
+    {"_submit", __splpy_ec_submit, METH_O,
+         "Submit tuple."},
     {"get_application_directory", __splpy_ec_get_application_directory, METH_NOARGS,
          "Get the application directory."},
     {NULL, NULL, 0, NULL}

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.1.1.5" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.7.4">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.8.0.beta">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -39,75 +39,81 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
 
     </description>
     <uriTable>
-      <uri index="40" value="com.ibm.streamsx.topology.functional.java/Filter/filter_32.gif"/>
+      <uri index="43" value="com.ibm.streamsx.topology.functional.java/Filter/filter_32.gif"/>
+      <uri index="24" value="com.ibm.streamsx.topology.functional.python/Aggregate"/>
       <uri index="10" value="com.ibm.streamsx.topology.topic/topicsfilter.spl"/>
       <uri index="6" value="com.ibm.streamsx.topology/types.spl"/>
-      <uri index="50" value="com.ibm.streamsx.topology.functional.java/Aggregate/aggregate_16.gif"/>
+      <uri index="53" value="com.ibm.streamsx.topology.functional.java/Aggregate/aggregate_16.gif"/>
+      <uri index="25" value="com.ibm.streamsx.topology.functional.python/opt/icons/aggregate_16.gif"/>
       <uri index="22" value="com.ibm.streamsx.topology.functional.python/opt/icons/filter_16.gif"/>
-      <uri index="59" value="com.ibm.streamsx.topology.functional.python2/FlatMap"/>
+      <uri index="62" value="com.ibm.streamsx.topology.functional.python2/FlatMap"/>
       <uri index="14" value="com.ibm.streamsx.topology.functional.python/FlatMap"/>
+      <uri index="72" value="com.ibm.streamsx.topology.functional.python2/Aggregate"/>
       <uri index="20" value="com.ibm.streamsx.topology.functional.python/Source"/>
-      <uri index="44" value="com.ibm.streamsx.topology.functional.java/FunctionPeriodicSource"/>
-      <uri index="71" value="com.ibm.streamsx.topology.functional.python2/ForEach"/>
-      <uri index="46" value="com.ibm.streamsx.topology.functional.java/Join"/>
-      <uri index="69" value="com.ibm.streamsx.topology.functional.python2/HashAdder"/>
-      <uri index="67" value="com.ibm.streamsx.topology.functional.python2/opt/icons/filter_16.gif"/>
-      <uri index="39" value="com.ibm.streamsx.topology.functional.java/Filter/filter_16.gif"/>
+      <uri index="47" value="com.ibm.streamsx.topology.functional.java/FunctionPeriodicSource"/>
+      <uri index="77" value="com.ibm.streamsx.topology.functional.python2/ForEach"/>
+      <uri index="49" value="com.ibm.streamsx.topology.functional.java/Join"/>
+      <uri index="75" value="com.ibm.streamsx.topology.functional.python2/HashAdder"/>
+      <uri index="70" value="com.ibm.streamsx.topology.functional.python2/opt/icons/filter_16.gif"/>
+      <uri index="42" value="com.ibm.streamsx.topology.functional.java/Filter/filter_16.gif"/>
       <uri index="17" value="com.ibm.streamsx.topology.functional.python/Map"/>
-      <uri index="53" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_16.gif"/>
+      <uri index="56" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_16.gif"/>
       <uri index="2" value="com.ibm.streamsx.topology.functional.python2/namespace-info.spl"/>
-      <uri index="64" value="com.ibm.streamsx.topology.functional.python2/Map/f../opt/icons/transform_32.gif"/>
-      <uri index="65" value="com.ibm.streamsx.topology.functional.python2/Source"/>
-      <uri index="34" value="com.ibm.streamsx.topology.functional.java/Map"/>
-      <uri index="68" value="com.ibm.streamsx.topology.functional.python2/Filter/f../opt/icons/ilter_32.gif"/>
-      <uri index="30" value="com.ibm.streamsx.topology.functional.java/PassThrough"/>
-      <uri index="54" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_32.gif"/>
-      <uri index="56" value="com.ibm.streamsx.topology.functional.java/Split/split_16.gif"/>
-      <uri index="33" value="com.ibm.streamsx.topology.functional.java/FlatMap/functor_32.gif"/>
-      <uri index="51" value="com.ibm.streamsx.topology.functional.java/Aggregate/aggregate_32.gif"/>
+      <uri index="67" value="com.ibm.streamsx.topology.functional.python2/Map/f../opt/icons/transform_32.gif"/>
+      <uri index="68" value="com.ibm.streamsx.topology.functional.python2/Source"/>
+      <uri index="37" value="com.ibm.streamsx.topology.functional.java/Map"/>
+      <uri index="71" value="com.ibm.streamsx.topology.functional.python2/Filter/f../opt/icons/ilter_32.gif"/>
+      <uri index="33" value="com.ibm.streamsx.topology.functional.java/PassThrough"/>
+      <uri index="57" value="com.ibm.streamsx.topology.functional.java/HashAdder/functor_32.gif"/>
+      <uri index="59" value="com.ibm.streamsx.topology.functional.java/Split/split_16.gif"/>
+      <uri index="36" value="com.ibm.streamsx.topology.functional.java/FlatMap/functor_32.gif"/>
+      <uri index="54" value="com.ibm.streamsx.topology.functional.java/Aggregate/aggregate_32.gif"/>
       <uri index="21" value="com.ibm.streamsx.topology.functional.python/Filter"/>
-      <uri index="43" value="com.ibm.streamsx.topology.functional.java/ToSPL/functor_32.gif"/>
-      <uri index="26" value="com.ibm.streamsx.topology.functional.python/ForEach"/>
-      <uri index="70" value="com.ibm.streamsx.topology.functional.python2/HashAdder/f../opt/icons/transform_32.gif"/>
-      <uri index="61" value="com.ibm.streamsx.topology.functional.python2/FlatMap/f../opt/icons/multi_transform_32.gif"/>
-      <uri index="27" value="com.ibm.streamsx.topology.file/TextFileReader"/>
+      <uri index="46" value="com.ibm.streamsx.topology.functional.java/ToSPL/functor_32.gif"/>
+      <uri index="29" value="com.ibm.streamsx.topology.functional.python/ForEach"/>
+      <uri index="76" value="com.ibm.streamsx.topology.functional.python2/HashAdder/f../opt/icons/transform_32.gif"/>
+      <uri index="64" value="com.ibm.streamsx.topology.functional.python2/FlatMap/f../opt/icons/multi_transform_32.gif"/>
+      <uri index="30" value="com.ibm.streamsx.topology.file/TextFileReader"/>
       <uri index="8" value="com.ibm.streamsx.topology.testing/namespace-info.spl"/>
       <uri index="9" value="com.ibm.streamsx.topology.functional.java/namespace-info.spl"/>
-      <uri index="28" value="com.ibm.streamsx.topology.file/DirectoryWatcher"/>
-      <uri index="47" value="com.ibm.streamsx.topology.functional.java/Join/join_16.gif"/>
-      <uri index="41" value="com.ibm.streamsx.topology.functional.java/ToSPL"/>
-      <uri index="32" value="com.ibm.streamsx.topology.functional.java/FlatMap/functor_16.gif"/>
-      <uri index="38" value="com.ibm.streamsx.topology.functional.java/Filter"/>
-      <uri index="57" value="com.ibm.streamsx.topology.functional.java/Split/split_32.gif"/>
-      <uri index="49" value="com.ibm.streamsx.topology.functional.java/Aggregate"/>
-      <uri index="24" value="com.ibm.streamsx.topology.functional.python/HashAdder"/>
+      <uri index="31" value="com.ibm.streamsx.topology.file/DirectoryWatcher"/>
+      <uri index="50" value="com.ibm.streamsx.topology.functional.java/Join/join_16.gif"/>
+      <uri index="44" value="com.ibm.streamsx.topology.functional.java/ToSPL"/>
+      <uri index="35" value="com.ibm.streamsx.topology.functional.java/FlatMap/functor_16.gif"/>
+      <uri index="41" value="com.ibm.streamsx.topology.functional.java/Filter"/>
+      <uri index="60" value="com.ibm.streamsx.topology.functional.java/Split/split_32.gif"/>
+      <uri index="52" value="com.ibm.streamsx.topology.functional.java/Aggregate"/>
+      <uri index="27" value="com.ibm.streamsx.topology.functional.python/HashAdder"/>
       <uri index="12" value="com.ibm.streamsx.topology.topic/topicsjava.spl"/>
-      <uri index="35" value="com.ibm.streamsx.topology.functional.java/Map/functor_16.gif"/>
-      <uri index="45" value="com.ibm.streamsx.topology.functional.java/HashRemover"/>
-      <uri index="63" value="com.ibm.streamsx.topology.functional.python2/opt/icons/transform_16.gif"/>
-      <uri index="60" value="com.ibm.streamsx.topology.functional.python2/opt/icons/multi_transform_16.gif"/>
-      <uri index="62" value="com.ibm.streamsx.topology.functional.python2/Map"/>
+      <uri index="38" value="com.ibm.streamsx.topology.functional.java/Map/functor_16.gif"/>
+      <uri index="48" value="com.ibm.streamsx.topology.functional.java/HashRemover"/>
+      <uri index="74" value="com.ibm.streamsx.topology.functional.python2/Aggregate/f../opt/icons/aggregate_32.gif"/>
+      <uri index="66" value="com.ibm.streamsx.topology.functional.python2/opt/icons/transform_16.gif"/>
+      <uri index="63" value="com.ibm.streamsx.topology.functional.python2/opt/icons/multi_transform_16.gif"/>
+      <uri index="65" value="com.ibm.streamsx.topology.functional.python2/Map"/>
       <uri index="16" value="com.ibm.streamsx.topology.functional.python/FlatMap/f../opt/icons/multi_transform_32.gif"/>
       <uri index="7" value="com.ibm.streamsx.topology.file/namespace-info.spl"/>
-      <uri index="66" value="com.ibm.streamsx.topology.functional.python2/Filter"/>
+      <uri index="69" value="com.ibm.streamsx.topology.functional.python2/Filter"/>
       <uri index="13" value="com.ibm.streamsx.topology.topic/topics.spl"/>
       <uri index="15" value="com.ibm.streamsx.topology.functional.python/opt/icons/multi_transform_16.gif"/>
       <uri index="1" value="com.ibm.streamsx.topology.functional.python/namespace-info.spl"/>
       <uri index="5" value="com.ibm.streamsx.topology/namespace-info.spl"/>
-      <uri index="42" value="com.ibm.streamsx.topology.functional.java/ToSPL/functor_16.gif"/>
+      <uri index="45" value="com.ibm.streamsx.topology.functional.java/ToSPL/functor_16.gif"/>
       <uri index="18" value="com.ibm.streamsx.topology.functional.python/opt/icons/transform_16.gif"/>
-      <uri index="48" value="com.ibm.streamsx.topology.functional.java/Join/join_32.gif"/>
-      <uri index="29" value="com.ibm.streamsx.topology.testing/TesterSink"/>
-      <uri index="25" value="com.ibm.streamsx.topology.functional.python/HashAdder/f../opt/icons/transform_32.gif"/>
-      <uri index="31" value="com.ibm.streamsx.topology.functional.java/FlatMap"/>
-      <uri index="36" value="com.ibm.streamsx.topology.functional.java/Map/functor_32.gif"/>
-      <uri index="37" value="com.ibm.streamsx.topology.functional.java/Source"/>
+      <uri index="51" value="com.ibm.streamsx.topology.functional.java/Join/join_32.gif"/>
+      <uri index="32" value="com.ibm.streamsx.topology.testing/TesterSink"/>
+      <uri index="28" value="com.ibm.streamsx.topology.functional.python/HashAdder/f../opt/icons/transform_32.gif"/>
+      <uri index="26" value="com.ibm.streamsx.topology.functional.python/Aggregate/f../opt/icons/aggregate_32.gif"/>
+      <uri index="34" value="com.ibm.streamsx.topology.functional.java/FlatMap"/>
+      <uri index="73" value="com.ibm.streamsx.topology.functional.python2/opt/icons/aggregate_16.gif"/>
+      <uri index="39" value="com.ibm.streamsx.topology.functional.java/Map/functor_32.gif"/>
+      <uri index="40" value="com.ibm.streamsx.topology.functional.java/Source"/>
       <uri index="11" value="com.ibm.streamsx.topology.topic/namespace-info.spl"/>
       <uri index="3" value="com.ibm.streamsx.topology.python/python.spl"/>
       <uri index="19" value="com.ibm.streamsx.topology.functional.python/Map/f../opt/icons/transform_32.gif"/>
-      <uri index="58" value="com.ibm.streamsx.topology.functional.java/ForEach"/>
-      <uri index="55" value="com.ibm.streamsx.topology.functional.java/Split"/>
-      <uri index="52" value="com.ibm.streamsx.topology.functional.java/HashAdder"/>
+      <uri index="61" value="com.ibm.streamsx.topology.functional.java/ForEach"/>
+      <uri index="58" value="com.ibm.streamsx.topology.functional.java/Split"/>
+      <uri index="55" value="com.ibm.streamsx.topology.functional.java/HashAdder"/>
       <uri index="4" value="com.ibm.streamsx.topology.python/namespace-info.spl"/>
       <uri index="23" value="com.ibm.streamsx.topology.functional.python/Filter/f../opt/icons/ilter_32.gif"/>
     </uriTable>
@@ -136,6 +142,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -161,6 +170,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
         </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
@@ -207,16 +219,19 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="24" name="HashAdder" public="true">
-        <description>Python functional transform.</description>
+      <primitiveOp language="Cpp" modelUriIndex="24" name="Aggregate" public="true">
+        <description>Python Windowing Operation</description>
         <images>
-          <image size="16" uriIndex="18"/>
-          <image size="32" uriIndex="25"/>
+          <image size="16" uriIndex="25"/>
+          <image size="32" uriIndex="26"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -230,12 +245,41 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <windowPolicy>Windowed</windowPolicy>
+        </inputPort>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+      </primitiveOp>
+      <primitiveOp language="Cpp" modelUriIndex="27" name="HashAdder" public="true">
+        <description>Python functional transform.</description>
+        <images>
+          <image size="16" uriIndex="18"/>
+          <image size="32" uriIndex="28"/>
+        </images>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
+          <description>Toolkit the operator was invoked from.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
+          <description>Function or callable class's module</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
+          <description>Function or callable class's name</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
+          <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="26" name="ForEach" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="29" name="ForEach" public="true">
         <description>Python functional sink. Each tuple results in a call to a function.</description>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -249,6 +293,9 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -261,7 +308,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
       <type column="6" line="97" name="Blob" static="true" type="blob binary" uriIndex="6"/>
     </namespace>
     <namespace name="com.ibm.streamsx.topology.file">
-      <primitiveOp language="Java" modelUriIndex="27" name="TextFileReader" public="true">
+      <primitiveOp language="Java" modelUriIndex="30" name="TextFileReader" public="true">
         <description/>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -279,7 +326,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="28" name="DirectoryWatcher" public="true">
+      <primitiveOp language="Java" modelUriIndex="31" name="DirectoryWatcher" public="true">
         <description/>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -421,7 +468,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
       </function>
     </namespace>
     <namespace name="com.ibm.streamsx.topology.testing">
-      <primitiveOp language="Java" modelUriIndex="29" name="TesterSink" public="true">
+      <primitiveOp language="Java" modelUriIndex="32" name="TesterSink" public="true">
         <description/>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -444,7 +491,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
       </primitiveOp>
     </namespace>
     <namespace name="com.ibm.streamsx.topology.functional.java">
-      <primitiveOp language="Java" modelUriIndex="30" name="PassThrough" public="true">
+      <primitiveOp language="Java" modelUriIndex="33" name="PassThrough" public="true">
         <description>Passes all input unchanged from its input port to its output port.</description>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -459,41 +506,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="31" name="FlatMap" public="true">
-        <description/>
-        <images>
-          <image size="16" uriIndex="32"/>
-          <image size="32" uriIndex="33"/>
-        </images>
-        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
-          <description>
-Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
-</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="queueSize" optional="true" type="int32">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <description/>
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
-          <description/>
-        </outputPort>
-      </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="34" name="Map" public="true">
+      <primitiveOp language="Java" modelUriIndex="34" name="FlatMap" public="true">
         <description/>
         <images>
           <image size="16" uriIndex="35"/>
@@ -527,7 +540,41 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="37" name="Source" public="true">
+      <primitiveOp language="Java" modelUriIndex="37" name="Map" public="true">
+        <description/>
+        <images>
+          <image size="16" uriIndex="38"/>
+          <image size="32" uriIndex="39"/>
+        </images>
+        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
+          <description>
+Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
+</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="queueSize" optional="true" type="int32">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <description/>
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
+          <description/>
+        </outputPort>
+      </primitiveOp>
+      <primitiveOp language="Java" modelUriIndex="40" name="Source" public="true">
         <description/>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -556,38 +603,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="38" name="Filter" public="true">
-        <description/>
-        <images>
-          <image size="16" uriIndex="39"/>
-          <image size="32" uriIndex="40"/>
-        </images>
-        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
-          <description>
-Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
-</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <description/>
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
-          <description/>
-        </outputPort>
-      </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="41" name="ToSPL" public="true">
+      <primitiveOp language="Java" modelUriIndex="41" name="Filter" public="true">
         <description/>
         <images>
           <image size="16" uriIndex="42"/>
@@ -618,7 +634,38 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="44" name="FunctionPeriodicSource" public="true">
+      <primitiveOp language="Java" modelUriIndex="44" name="ToSPL" public="true">
+        <description/>
+        <images>
+          <image size="16" uriIndex="45"/>
+          <image size="32" uriIndex="46"/>
+        </images>
+        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
+          <description>
+Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
+</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <description/>
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
+          <description/>
+        </outputPort>
+      </primitiveOp>
+      <primitiveOp language="Java" modelUriIndex="47" name="FunctionPeriodicSource" public="true">
         <description/>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -647,7 +694,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="45" name="HashRemover" public="true">
+      <primitiveOp language="Java" modelUriIndex="48" name="HashRemover" public="true">
         <description>Passes all input unchanged from its input port to its output port, but removes the __spl_hash, the second attribute.</description>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -671,11 +718,11 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="46" name="Join" public="true">
+      <primitiveOp language="Java" modelUriIndex="49" name="Join" public="true">
         <description/>
         <images>
-          <image size="16" uriIndex="47"/>
-          <image size="32" uriIndex="48"/>
+          <image size="16" uriIndex="50"/>
+          <image size="32" uriIndex="51"/>
         </images>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -712,11 +759,11 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="49" name="Aggregate" public="true">
+      <primitiveOp language="Java" modelUriIndex="52" name="Aggregate" public="true">
         <description/>
         <images>
-          <image size="16" uriIndex="50"/>
-          <image size="32" uriIndex="51"/>
+          <image size="16" uriIndex="53"/>
+          <image size="32" uriIndex="54"/>
         </images>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -746,38 +793,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="52" name="HashAdder" public="true">
-        <description/>
-        <images>
-          <image size="16" uriIndex="53"/>
-          <image size="32" uriIndex="54"/>
-        </images>
-        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
-          <description>
-Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
-</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
-          <description/>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <description/>
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
-          <description/>
-        </outputPort>
-      </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="55" name="Split" public="true">
+      <primitiveOp language="Java" modelUriIndex="55" name="HashAdder" public="true">
         <description/>
         <images>
           <image size="16" uriIndex="56"/>
@@ -804,11 +820,42 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description/>
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free">
+          <description/>
+        </outputPort>
+      </primitiveOp>
+      <primitiveOp language="Java" modelUriIndex="58" name="Split" public="true">
+        <description/>
+        <images>
+          <image size="16" uriIndex="59"/>
+          <image size="32" uriIndex="60"/>
+        </images>
+        <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
+          <description>
+Specifies command-line arguments that are passed to the Java virtual machine that the operator runs within.
+</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="functionalLogic" optional="false" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="jar" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamNames" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <parameter cardinality="-1" expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description/>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <description/>
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
         <outputPort expressionMode="Nonexistent" minNumPorts="0" optional="true" windowPunctOutputMode="Free">
           <description/>
         </outputPort>
       </primitiveOp>
-      <primitiveOp language="Java" modelUriIndex="58" name="ForEach" public="true">
+      <primitiveOp language="Java" modelUriIndex="61" name="ForEach" public="true">
         <description/>
         <parameter expressionMode="Constant" name="vmArg" optional="true" type="rstring">
           <description>
@@ -837,34 +884,8 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
       </primitiveOp>
     </namespace>
     <namespace name="com.ibm.streamsx.topology.functional.python2">
-      <primitiveOp language="Cpp" modelUriIndex="59" name="FlatMap" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="62" name="FlatMap" public="true">
         <description>Python functional multiple transform.</description>
-        <images>
-          <image size="16" uriIndex="60"/>
-          <image size="32" uriIndex="61"/>
-        </images>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
-          <description>Toolkit the operator was invoked from.</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
-          <description>Function or callable class's module</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
-          <description>Function or callable class's name</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
-          <description>Serialized instance of a callable class</description>
-        </parameter>
-        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
-          <description>Number of output connections.</description>
-        </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <windowPolicy>NonWindowed</windowPolicy>
-        </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
-      </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="62" name="Map" public="true">
-        <description>Python functional transform.</description>
         <images>
           <image size="16" uriIndex="63"/>
           <image size="32" uriIndex="64"/>
@@ -884,12 +905,44 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="65" name="Source" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="65" name="Map" public="true">
+        <description>Python functional transform.</description>
+        <images>
+          <image size="16" uriIndex="66"/>
+          <image size="32" uriIndex="67"/>
+        </images>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
+          <description>Toolkit the operator was invoked from.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
+          <description>Function or callable class's module</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
+          <description>Function or callable class's name</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
+          <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+      </primitiveOp>
+      <primitiveOp language="Cpp" modelUriIndex="68" name="Source" public="true">
         <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -908,11 +961,40 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="66" name="Filter" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="69" name="Filter" public="true">
         <description>Python functional filter.</description>
         <images>
-          <image size="16" uriIndex="67"/>
-          <image size="32" uriIndex="68"/>
+          <image size="16" uriIndex="70"/>
+          <image size="32" uriIndex="71"/>
+        </images>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
+          <description>Toolkit the operator was invoked from.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyModule" optional="false" type="rstring">
+          <description>Function or callable class's module</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyName" optional="false" type="rstring">
+          <description>Function or callable class's name</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
+          <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
+          <description>Number of output connections.</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+          <windowPolicy>NonWindowed</windowPolicy>
+        </inputPort>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+      </primitiveOp>
+      <primitiveOp language="Cpp" modelUriIndex="72" name="Aggregate" public="true">
+        <description>Python Windowing Operation</description>
+        <images>
+          <image size="16" uriIndex="73"/>
+          <image size="32" uriIndex="74"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -930,15 +1012,15 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
           <description>Number of output connections.</description>
         </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
-          <windowPolicy>NonWindowed</windowPolicy>
+          <windowPolicy>Windowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="69" name="HashAdder" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="75" name="HashAdder" public="true">
         <description>Python functional transform.</description>
         <images>
-          <image size="16" uriIndex="63"/>
-          <image size="32" uriIndex="70"/>
+          <image size="16" uriIndex="66"/>
+          <image size="32" uriIndex="76"/>
         </images>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -952,12 +1034,15 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
       </primitiveOp>
-      <primitiveOp language="Cpp" modelUriIndex="71" name="ForEach" public="true">
+      <primitiveOp language="Cpp" modelUriIndex="77" name="ForEach" public="true">
         <description>Python functional sink. Each tuple results in a call to a function.</description>
         <parameter cardinality="1" expressionMode="AttributeFree" name="toolkitDir" optional="false" type="rstring">
           <description>Toolkit the operator was invoked from.</description>
@@ -970,6 +1055,9 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
+          <description>Style stream tuples are passed into Python.</description>
         </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
