@@ -4,6 +4,7 @@
 import logging
 import requests
 import queue
+import os
 import threading
 import time
 import json
@@ -139,6 +140,14 @@ class _StreamsRestClient(object):
     def make_request(self, url):
         logger.debug('Beginning a REST request to: ' + url)
         return self.session.get(url).json()
+
+    def make_raw_request(self, url):
+        logger.debug('Beginning a REST request to: ' + url)
+        return self.session.get(url)
+
+    def make_raw_streaming_request(self, url):
+        logger.debug('Beginning a REST request to: ' + url)
+        return self.session.get(url, stream=True)
 
     def __str__(self):
         return pformat(self.__dict__)
@@ -395,6 +404,44 @@ class Job(_ResourceElement):
         >>> print (jobs[0].health)
         healthy
     """
+    def retrieve_log_trace(self, filename=None, dir=None):
+        """Retrieves the application log and trace files of the job
+        and saves them as a compressed tar file.
+
+        An existing file with the same name will be overwritten.
+
+        Args:
+            filename (str): name of the created tar file. Defaults to `job_<id>_<timestamp>.tar.gz` where `id` is the job identifier and `timestamp` is the number of seconds since the Unix epoch, for example ``job_355_1511995995.tar.gz``.
+            dir (str): a valid directory in which to save the archive. Defaults to the current directory.
+
+        Returns:
+            str: the path to the created tar file.
+
+        .. versionadded:: 1.8
+        """
+        logger.debug("Retrieving application logs from: " + self.applicationLogTrace)
+        logs = self.rest_client.make_raw_streaming_request(self.applicationLogTrace)
+        
+        if filename is None:
+            filename = 'job_' + self.id + '_' + str(int(time.time())) + '.tar.gz'
+        if dir is None:
+            dir = os.getcwd()
+
+        path = os.path.join(dir, filename)
+        try:
+            with open(path, 'w+b') as logfile:
+                for chunk in logs.iter_content(chunk_size=1024*64):
+                    if chunk:
+                        logfile.write(chunk)
+        except IOError as e:
+            logger.error("IOError({0}) writing application log files: {1}".format(e.errno, e.strerror))
+            raise e
+        except Exception as e:
+            logger.error("Error while writing application log files")
+            raise e
+
+        return path                    
+
     def get_views(self, name=None):
         """Get the list of :py:class:`View` elements associated with this job.
 

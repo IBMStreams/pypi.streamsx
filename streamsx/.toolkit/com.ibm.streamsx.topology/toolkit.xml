@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.1.1.5" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.8.0.beta">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.0.1.0" version="1.8.1.beta">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -148,7 +148,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="17" name="Map" public="true">
         <description>Python functional transform.</description>
@@ -177,7 +177,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="20" name="Source" public="true">
         <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
@@ -225,7 +225,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="24" name="Aggregate" public="true">
         <description>Python Windowing Operation</description>
@@ -248,10 +248,10 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="WindowBound">
           <windowPolicy>Windowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Generating"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="27" name="HashAdder" public="true">
         <description>Python functional transform.</description>
@@ -277,7 +277,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="29" name="ForEach" public="true">
         <description>Python functional sink. Each tuple results in a call to a function.</description>
@@ -911,7 +911,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="65" name="Map" public="true">
         <description>Python functional transform.</description>
@@ -940,7 +940,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="68" name="Source" public="true">
         <description>Python functional source. Repeatably calls a python function with the return values populating the output stream.</description>
@@ -988,7 +988,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="72" name="Aggregate" public="true">
         <description>Python Windowing Operation</description>
@@ -1011,10 +1011,10 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
-        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
+        <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="WindowBound">
           <windowPolicy>Windowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Generating"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="75" name="HashAdder" public="true">
         <description>Python functional transform.</description>
@@ -1040,7 +1040,7 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
-        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Free"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="77" name="ForEach" public="true">
         <description>Python functional sink. Each tuple results in a call to a function.</description>

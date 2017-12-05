@@ -182,6 +182,11 @@ sub main::generate($$) {
    print '  }', "\n";
    print '}', "\n";
    print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
+   print '{', "\n";
+   print '   forwardWindowPunctuation(punct);', "\n";
+   print '}', "\n";
+   print "\n";
    SPL::CodeGen::implementationEpilogue($model);
    print "\n";
    CORE::exit $SPL::CodeGen::USER_ERROR if ($SPL::CodeGen::sawError);

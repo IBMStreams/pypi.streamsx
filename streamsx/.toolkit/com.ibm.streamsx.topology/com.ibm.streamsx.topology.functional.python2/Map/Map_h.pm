@@ -57,6 +57,7 @@ sub main::generate($$) {
    print "\n";
    print '  // Tuple processing for non-mutating ports', "\n";
    print '  void process(Tuple const & tuple, uint32_t port);', "\n";
+   print '  void process(Punctuation const & punct, uint32_t port);', "\n";
    print "\n";
    print 'private:', "\n";
    if ($pyoutstyle eq 'dict') {

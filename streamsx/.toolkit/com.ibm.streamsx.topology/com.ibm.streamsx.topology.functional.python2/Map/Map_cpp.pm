@@ -240,6 +240,11 @@ sub main::generate($$) {
    print "\n";
    print '}', "\n";
    print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
+   print '{', "\n";
+   print '   forwardWindowPunctuation(punct);', "\n";
+   print '}', "\n";
+   print "\n";
    if ($pyoutstyle eq 'dict') {
      # In this case we don't want the function that
      # converts the Python tuple to an SPL tuple to

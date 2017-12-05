@@ -345,6 +345,7 @@ sub main::generate($$) {
    print '(), occ_)){  ', "\n";
    print '     submit(otuple, 0);', "\n";
    print '  }', "\n";
+   print '  submit(Punctuation::WindowMarker, 0);', "\n";
    print '}', "\n";
    print "\n";
    print '// ##################################', "\n";
