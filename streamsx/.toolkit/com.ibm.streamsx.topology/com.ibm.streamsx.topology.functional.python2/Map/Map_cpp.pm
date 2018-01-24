@@ -1,7 +1,7 @@
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_pyTupleTosplTuple.cgt
-# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
-# SPL_CGT_INCLUDE: ../pyspltuple.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2tuple.cgt
 
@@ -148,16 +148,8 @@ sub main::generate($$) {
    print ' const &>(tuple);', "\n";
    print "\n";
    print splpy_inputtuple2value($pystyle, $iport);
-   if ($pystyle eq 'dict') {
-   print "\n";
-   # Takes the input SPL tuple and converts it to
-   # as a dict to be passed to a Python functional operator
-   #
-   # Leaves the C++ variable value set to a PyObject * dict.
    
-   # Variables that need to be set:
-   # $iport - input port 
-   print "\n";
+   if ($pystyle eq 'dict' || $pystyle eq 'tuple') {
    print "\n";
    # Perl Variables that need to be set:
    #
@@ -174,6 +166,18 @@ sub main::generate($$) {
             last;
          }
       }
+   print "\n";
+   }
+   
+   if ($pystyle eq 'dict') {
+   print "\n";
+   # Takes the input SPL tuple and converts it to
+   # as a dict to be passed to a Python functional operator
+   #
+   # Leaves the C++ variable value set to a PyObject * dict.
+   
+   # Variables that need to be set:
+   # $iport - input port 
    print "\n";
    print "\n";
    print '  PyObject *value = 0;', "\n";
@@ -192,7 +196,7 @@ sub main::generate($$) {
    # Takes the input SPL tuple and converts it to
    # as a tuple to be passed to a Python functional operator
    #
-   # Leaves the C++ variable value set to a PyObject * dict.
+   # Leaves the C++ variable value set to a PyObject * tuple.
    
    # Variables that need to be set:
    # $iport - input port 
