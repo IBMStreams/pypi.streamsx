@@ -4,7 +4,9 @@ To create a release:
 1. Modify `build.xml` to change the release URL for the topology toolkit
 1. Execute `ant get_artifacts` to update the contents of the package
 1. `git add build/build.xml setup.py`
+1. Verify DESC.txt is correct including the documentation links.
 1. Make any other changes required.
+1. Ensure all modified files are "git added".
 1. Commit all changes
 1. add tag `git tag 0.4.0`
 1. `git push`
