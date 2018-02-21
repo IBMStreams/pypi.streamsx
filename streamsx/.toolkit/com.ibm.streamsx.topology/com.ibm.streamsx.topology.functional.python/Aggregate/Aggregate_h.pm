@@ -34,11 +34,19 @@ sub main::generate($$) {
    
     my $pystyle = $model->getParameterByName("pyStyle");
     if ($pystyle) {
-        $pystyle = substr $pystyle->getValueAt(0)->getSPLExpression(), 1, -1;
+        $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
     } else {
         $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
     }
-   print "\n";
+    # $pystyle is the raw value from the operator parameter
+    # $pystyle_nt is the value that defines how the function is called
+    # (for style namedtuple:xxxx it is tuple)
+    # $pystyle_nt is non-zero if style is namedtuple
+    my $pystyle_fn = $pystyle;
+    my $pystyle_nt = substr($pystyle, 0, 11) eq 'namedtuple:';
+    if ($pystyle_nt) {
+       $pystyle_fn = 'tuple';
+    }
    print "\n";
     my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
     my $oport = $model->getOutputPortAt(0);
@@ -82,8 +90,7 @@ sub main::generate($$) {
    print '    SplpyFuncOp *funcop_;', "\n";
    print '    PyObject *spl_in_object_out;', "\n";
    print '    ', "\n";
-   print '    // Names of input attributes', "\n";
-   print '    PyObject *pyInNames_;', "\n";
+   print '    PyObject *pyInStyleObj_;', "\n";
    print "\n";
    print '    PyObject *loads;', "\n";
    print "\n";

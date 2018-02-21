@@ -39,11 +39,19 @@ sub main::generate($$) {
    
     my $pystyle = $model->getParameterByName("pyStyle");
     if ($pystyle) {
-        $pystyle = substr $pystyle->getValueAt(0)->getSPLExpression(), 1, -1;
+        $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
     } else {
         $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
     }
-   print "\n";
+    # $pystyle is the raw value from the operator parameter
+    # $pystyle_nt is the value that defines how the function is called
+    # (for style namedtuple:xxxx it is tuple)
+    # $pystyle_nt is non-zero if style is namedtuple
+    my $pystyle_fn = $pystyle;
+    my $pystyle_nt = substr($pystyle, 0, 11) eq 'namedtuple:';
+    if ($pystyle_nt) {
+       $pystyle_fn = 'tuple';
+    }
    print "\n";
    print "\n";
    
@@ -68,7 +76,7 @@ sub main::generate($$) {
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
-   print '   pyInNames_(NULL),', "\n";
+   print '   pyInStyleObj_(NULL),', "\n";
    print '   loads(NULL),', "\n";
    print '   occ_(-1),', "\n";
    print '   window_(';
@@ -179,7 +187,7 @@ sub main::generate($$) {
    print "\n";
    print splpy_inputtuple2value($pystyle, $iport);
    
-   if ($pystyle eq 'dict' || $pystyle eq 'tuple') {
+   if ($pystyle eq 'dict' || $pystyle eq 'tuple' || $pystyle_nt) {
    print "\n";
    # Perl Variables that need to be set:
    #
@@ -221,7 +229,7 @@ sub main::generate($$) {
    print "\n";
    print '  value = pyDict;', "\n";
    print '  }', "\n";
-    } elsif ($pystyle eq 'tuple') { 
+    } elsif ($pystyle eq 'tuple' || $pystyle_nt) { 
    print "\n";
    # Takes the input SPL tuple and converts it to
    # as a tuple to be passed to a Python functional operator
@@ -242,6 +250,13 @@ sub main::generate($$) {
             my $la = $iport->getAttributeAt($i);
             print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName());
         }
+   print "\n";
+    if ($pystyle_nt) { 
+   print "\n";
+   print '    pyTuple = streamsx::topology::SplpyGeneral::pyCallObject(pyNamedtupleCls_, pyTuple);', "\n";
+   print "\n";
+    } 
+   print "\n";
    print "\n";
    print '  value = pyTuple;', "\n";
    print '  }', "\n";

@@ -1,8 +1,9 @@
-# SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
-# SPL_CGT_INCLUDE: ../pyspltuple.cgt
-# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
-# SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2tuple.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple_constructor.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
 package Filter_cpp;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
@@ -39,30 +40,58 @@ sub main::generate($$) {
    
     my $pystyle = $model->getParameterByName("pyStyle");
     if ($pystyle) {
-        $pystyle = substr $pystyle->getValueAt(0)->getSPLExpression(), 1, -1;
+        $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
     } else {
         $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
     }
-   print "\n";
+    # $pystyle is the raw value from the operator parameter
+    # $pystyle_nt is the value that defines how the function is called
+    # (for style namedtuple:xxxx it is tuple)
+    # $pystyle_nt is non-zero if style is namedtuple
+    my $pystyle_fn = $pystyle;
+    my $pystyle_nt = substr($pystyle, 0, 11) eq 'namedtuple:';
+    if ($pystyle_nt) {
+       $pystyle_fn = 'tuple';
+    }
    print "\n";
     # Select the Python wrapper function
-    my $pywrapfunc= $pystyle . '_in';
+    my $pywrapfunc= $pystyle_fn . '_in';
    print "\n";
    print "\n";
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
-   print '   pyInNames_(NULL)', "\n";
+   print '   pyInStyleObj_(NULL)', "\n";
    print '{', "\n";
    print '    funcop_ = new SplpyFuncOp(this, "';
    print $pywrapfunc;
    print '");', "\n";
-   print '  ', "\n";
-    if ($pystyle eq 'dict') { 
    print "\n";
+    if ($pystyle_fn eq 'dict') { 
+   print "\n";
+   print '#define pyInNames_ pyInStyleObj_', "\n";
+   print '{', "\n";
    print '     SplpyGIL lock;', "\n";
    print '     pyInNames_ = streamsx::topology::Splpy::pyAttributeNames(', "\n";
    print '               getInputPortAt(0));', "\n";
+   print '}', "\n";
+    } 
+   print "\n";
+   print "\n";
+    if ($pystyle_nt) { 
+   print "\n";
+   print '#define pyNamedtupleCls_ pyInStyleObj_', "\n";
+   print '{', "\n";
+   print '     SplpyGIL lock;', "\n";
+   print '     pyNamedtupleCls_ = streamsx::topology::SplpyGeneral::callFunction(', "\n";
+   print '        "streamsx.topology.runtime", "_get_namedtuple_cls",', "\n";
+   print '       streamsx::topology::pyUnicode_FromUTF8("';
+   print $iport->getSPLTupleType();
+   print '"),', "\n";
+   print '       streamsx::topology::pyUnicode_FromUTF8("';
+   print substr($pystyle, 11);
+   print '"));', "\n";
+   print '}', "\n";
     } 
    print "\n";
    print '}', "\n";
@@ -70,14 +99,10 @@ sub main::generate($$) {
    print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
-    if ($pystyle eq 'dict') { 
-   print "\n";
-   print '    if (pyInNames_) {', "\n";
+   print '    if (pyInStyleObj_) {', "\n";
    print '      SplpyGIL lock;', "\n";
-   print '      Py_DECREF(pyInNames_);', "\n";
+   print '      Py_DECREF(pyInStyleObj_);', "\n";
    print '    }', "\n";
-    } 
-   print "\n";
    print "\n";
    print '    delete funcop_;', "\n";
    print '}', "\n";
@@ -112,7 +137,7 @@ sub main::generate($$) {
    print "\n";
    print splpy_inputtuple2value($pystyle, $iport);
    
-   if ($pystyle eq 'dict' || $pystyle eq 'tuple') {
+   if ($pystyle eq 'dict' || $pystyle eq 'tuple' || $pystyle_nt) {
    print "\n";
    # Perl Variables that need to be set:
    #
@@ -154,7 +179,7 @@ sub main::generate($$) {
    print "\n";
    print '  value = pyDict;', "\n";
    print '  }', "\n";
-    } elsif ($pystyle eq 'tuple') { 
+    } elsif ($pystyle eq 'tuple' || $pystyle_nt) { 
    print "\n";
    # Takes the input SPL tuple and converts it to
    # as a tuple to be passed to a Python functional operator
@@ -175,6 +200,13 @@ sub main::generate($$) {
             my $la = $iport->getAttributeAt($i);
             print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName());
         }
+   print "\n";
+    if ($pystyle_nt) { 
+   print "\n";
+   print '    pyTuple = streamsx::topology::SplpyGeneral::pyCallObject(pyNamedtupleCls_, pyTuple);', "\n";
+   print "\n";
+    } 
+   print "\n";
    print "\n";
    print '  value = pyTuple;', "\n";
    print '  }', "\n";

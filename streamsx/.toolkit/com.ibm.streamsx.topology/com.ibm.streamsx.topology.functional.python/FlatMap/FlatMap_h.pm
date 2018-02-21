@@ -36,8 +36,7 @@ sub main::generate($$) {
    print '    // Control for interaction with Python', "\n";
    print '    SplpyFuncOp *funcop_;', "\n";
    print '    ', "\n";
-   print '    // Names of input attributes', "\n";
-   print '    PyObject *pyInNames_;', "\n";
+   print '    PyObject *pyInStyleObj_;', "\n";
    print "\n";
    print '    // Number of output connections when passing by ref', "\n";
    print '    // -1 when cannot pass by ref', "\n";
