@@ -31,6 +31,7 @@ sub main::generate($$) {
    print '  void process(Tuple const & tuple, uint32_t port);', "\n";
    print "\n";
    print 'private:', "\n";
+   print '  SplpyOp * op() { return funcop_; }', "\n";
    print '  ', "\n";
    print '  // Members', "\n";
    print '  // Control for interaction with Python', "\n";

@@ -138,6 +138,16 @@ Example of using ``__enter__`` and ``__exit__`` to open and close a file::
             if self.file is not None:
                 self.file.close()
 
+        def __call__(self):
+            pass
+
+When an instance defines a valid ``__exit__`` method then it will be called with an exception when:
+
+ * the instance raises an exception during processing of a tuple
+ * a data conversion exception is raised converting a Python value to an SPL tuple or attribute
+
+If ``__exit__`` returns a true value then the exception is suppressed and processing continues, otherwise the enclosing processing element will be terminated.
+
 Application log and trace
 =========================
 
@@ -292,6 +302,7 @@ For signatures only containing a parameter of the form
 
 Otherwise the style is set by the ``style`` parameter to the decorator,
 defaulting to *attributes by name*. The style value can be set to:
+
   * ``'name'`` - *attributes by name* (the default)
   * ``'position'`` - *attributes by position*
 
@@ -465,7 +476,7 @@ The returned tuple may be *sparse*, any attribute value in the tuple
 that is ``None`` will be set to their SPL default or copied from the
 input tuple, depending on the operator kind::
     
-    # SPL input schema: tuple<int32 x, float64 x>
+    # SPL input schema: tuple<int32 x, float64 y>
     # SPL output schema: tuple<int32 x, float64 y, float32 z>
     @spl.map(style='position')
     def myfunc(a,b):
@@ -481,7 +492,7 @@ schema the attributes not set by the Python function will be set
 to their SPL default or copied from the input tuple, depending on
 the operator kind::
     
-    # SPL input schema: tuple<int32 x, float64 x>
+    # SPL input schema: tuple<int32 x, float64 y>
     # SPL output schema: tuple<int32 x, float64 y, float32 z>
     @spl.map(style='position')
     def myfunc(a,b):
@@ -494,7 +505,7 @@ the operator kind::
 
 When a returned tuple has more values than attributes in the SPL output schema then the additional values are ignored::
 
-    # SPL input schema: tuple<int32 x, float64 x>
+    # SPL input schema: tuple<int32 x, float64 y>
     # SPL output schema: tuple<int32 x, float64 y, float32 z>
     @spl.map(style='position')
     def myfunc(a,b):
@@ -627,8 +638,8 @@ def _wrapforsplop(optype, wrapped, style, docpy):
                     ec._save_opc(self)
                 ec._callable_enter(self)
 
-            def _splpy_shutdown(self):
-                ec._callable_exit_clean(self)
+            def _splpy_shutdown(self, exc_type=None, exc_value=None, traceback=None):
+                return ec._callable_exit(self, exc_type, exc_value, traceback)
 
         if optype in (_OperatorType.Sink, _OperatorType.Pipe, _OperatorType.Filter):
             _op_class._splpy_style = _define_style(wrapped, wrapped.__call__, style)
@@ -803,8 +814,29 @@ class source(object):
             param
                 stop: 100;
         }
+
     Args:
        docpy: Copy Python docstrings into SPL operator model for SPLDOC.
+
+    Exceptions raised by ``__iter__`` and ``__next__`` can be suppressed
+    when this decorator wraps a class with context manager
+    ``__enter__`` and ``__exit__`` methods.
+
+    If ``__exit__`` returns a true value when called with an exception 
+    then the exception is suppressed.
+
+    Suppressing an exception raised by ``__iter__`` results in the
+    source producing an empty iteration. No tuples will be submitted.
+
+    Suppressing an exception raised by ``__next__`` results in the
+    source not producing any tuples for that invocation. Processing
+    continues with a call to ``__next__``.
+
+    Data conversion errors of the value returned by ``__next__`` can
+    also be suppressed by ``__exit__``.
+    If ``__exit__`` returns a true value when called with the exception 
+    then the exception is suppressed and the value that caused the
+    exception is not submitted as an SPL tuple.
     """
     def __init__(self, docpy=True):
         self.style = None
@@ -845,6 +877,18 @@ class map(object):
     Args:
        style: How the SPL tuple is passed into Python callable or function, see  :ref:`spl-tuple-to-python`.
        docpy: Copy Python docstrings into SPL operator model for SPLDOC.
+
+    Exceptions raised by ``__call__`` can be suppressed when this decorator
+    wraps a class with context manager ``__enter__`` and ``__exit__`` methods.
+    If ``__exit__`` returns a true value when called with the exception 
+    then the exception is suppressed and the tuple that caused the
+    exception is dropped.
+
+    Data conversion errors of the value returned by ``__call__`` can
+    also be suppressed by ``__exit__``.
+    If ``__exit__`` returns a true value when called with the exception 
+    then the exception is suppressed and the value that caused the
+    exception is not submitted as an SPL tuple.
     """
     def __init__(self, style=None, docpy=True):
         self.style = style
@@ -893,6 +937,12 @@ class filter(object):
               attr: "voltage";
               threshold: 225.0;
         }
+
+    Exceptions raised by ``__call__`` can be suppressed when this decorator
+    wraps a class with context manager ``__enter__`` and ``__exit__`` methods.
+    If ``__exit__`` returns a true value when called with the exception 
+    then the expression is suppressed and the tuple that caused the
+    exception is dropped.
     """
     def __init__(self, style=None, docpy=True):
         self.style = style
@@ -957,6 +1007,12 @@ class for_each(object):
     Args:
        style: How the SPL tuple is passed into Python callable, see  :ref:`spl-tuple-to-python`.
        docpy: Copy Python docstrings into SPL operator model for SPLDOC.
+
+    Exceptions raised by ``__call__`` can be suppressed when this decorator
+    wraps a class with context manager ``__enter__`` and ``__exit__`` methods.
+    If ``__exit__`` returns a true value when called with the exception 
+    then the expression is suppressed and the tuple that caused the
+    exception is ignored.
     """
     def __init__(self, style=None, docpy=True):
         self.style = style
@@ -1005,12 +1061,14 @@ class PrimitiveOperator(object):
         the SPL runtime to determine when an operator completes.
         An operator completes, and finalizes its output ports
         when:
+
             * All input ports (if any) have been finalized.
             * All background processing is complete.
 
         The return from ``all_ports_ready`` defines when
         background processing, such as threads started by
         ``all_ports_ready``, is complete. The value is one of:
+
             * A value that evaluates to `False` - No background processing exists.
             * A value that evaluates to `True` - Background processing exists and never completes. E.g. a source operator that processes real time events.
             * A callable - Background processing is complete when the callable returns. The SPL runtime invokes the callable once (passing no arguments) when the method returns background processing is assumed to be complete.

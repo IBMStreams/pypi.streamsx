@@ -77,6 +77,7 @@ sub main::generate($$) {
    print '  PyObject *pyReturnVar = NULL;', "\n";
    print "\n";
    print '  while(!getPE().getShutdownRequested()) {', "\n";
+   print '   try {', "\n";
    print '    ', "\n";
    print '    OPort0Type otuple;', "\n";
    print "\n";
@@ -88,7 +89,7 @@ sub main::generate($$) {
    print '      pyReturnVar = PyObject_CallObject(funcop_->callable(), NULL);', "\n";
    print "\n";
    print '      if (pyReturnVar == NULL) {', "\n";
-   print '         throw SplpyGeneral::pythonException("source");', "\n";
+   print '         throw SplpyExceptionInfo::pythonError("source");', "\n";
    print '      }', "\n";
    print ' ', "\n";
    print '      if (SplpyGeneral::isNone(pyReturnVar)) {', "\n";
@@ -117,6 +118,9 @@ sub main::generate($$) {
    print '    } // end lock', "\n";
    print "\n";
    print '    submit(otuple, 0);', "\n";
+   print '   } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '     SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '   }', "\n";
    print '  }', "\n";
    print "\n";
    print '  if (pyReturnVar != NULL) {', "\n";

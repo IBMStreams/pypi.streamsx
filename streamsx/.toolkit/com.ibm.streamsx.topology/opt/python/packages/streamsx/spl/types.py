@@ -15,18 +15,12 @@ must use the SPL type required by the operator.
 """
 from future.builtins import *
 
-import collections
 import datetime
 import time
 import streamsx.spl.op
+import streamsx.spl.runtime
 
-# Used by Timestamp.__reduce__ to avoid dill
-# trying to treat a Timestamp as a namedtuple.
-def _stored_ts(s, ns, mid):
-    return Timestamp(s, ns, mid)
-
-_Timestamp = collections.namedtuple('Timestamp', ['seconds', 'nanoseconds', 'machine_id'])
-class Timestamp(_Timestamp):
+class Timestamp(streamsx.spl.runtime._Timestamp):
     """
     SPL native timestamp type with nanosecond resolution.
 
@@ -120,7 +114,7 @@ class Timestamp(_Timestamp):
          return ns
 
     def __new__(cls, seconds, nanoseconds, machine_id=0):
-        return _Timestamp.__new__(cls, int(seconds), Timestamp._check_nanos(nanoseconds), int(machine_id))
+        return streamsx.spl.runtime._Timestamp.__new__(cls, int(seconds), Timestamp._check_nanos(nanoseconds), int(machine_id))
 
     def time(self):
         """
@@ -155,7 +149,7 @@ class Timestamp(_Timestamp):
         return self
 
     def __reduce__(self):
-        return _stored_ts, tuple(self)
+        return streamsx.spl.runtime._stored_ts, tuple(self)
 
 def _get_timestamp_tuple(ts):
     """
@@ -166,24 +160,33 @@ def _get_timestamp_tuple(ts):
         return Timestamp.from_datetime(ts).tuple()
     elif isinstance(ts, Timestamp):    
         return ts
-    raise ValueError('Timestamp or dtate.datetime required')
+    raise TypeError('Timestamp or datetime.datetime required')
     
 
 def int8(value):
     """
     Create an SPL ``int8`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('INT8', int(value))
 
 def int16(value):
     """
     Create an SPL ``int16`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('INT16', int(value))
 
 def int32(value):
     """
     Create an SPL ``int32`` value.
+
+    Returns:
+        Expression: Expression representing the value.
 
     Args:
         value(int): Value to be types as ``int32``.
@@ -193,47 +196,72 @@ def int32(value):
 def int64(value):
     """
     Create an SPL ``int64`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('INT64', int(value))
 
 def uint8(value):
     """
     Create an SPL ``uint8`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('UINT8', int(value))
 
 def uint16(value):
     """
     Create an SPL ``uint16`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('UINT16', int(value))
 
 def uint32(value):
     """
     Create an SPL ``uint32`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('UINT32', int(value))
 
 def uint64(value):
     """
     Create an SPL ``uint64`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('UINT64', int(value))
 
 def float32(value):
     """
     Create an SPL ``float32`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('FLOAT32', float(value))
 
 def float64(value):
     """
     Create an SPL ``float64`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('FLOAT64', float(value))
 
 def rstring(value):
     """
     Create an SPL ``rstring`` value.
+
+    Returns:
+        Expression: Expression representing the value.
     """
     return streamsx.spl.op.Expression('RSTRING', str(value))
+

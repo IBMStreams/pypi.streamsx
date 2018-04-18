@@ -29,7 +29,6 @@ from streamsx.topology.schema import CommonSchema, StreamSchema
 from streamsx.topology.schema import _stream_schema
 
 
-
 def _fix_namespace(ns):
     ns = str(ns)
     sns = ns.split('.')
@@ -48,6 +47,9 @@ def _as_spl_expr(value):
     """ Return value converted to an SPL expression if
     needed other otherwise value.
     """
+    if hasattr(value, 'spl_json'):
+        return value
+      
     if isinstance(value, Enum):
         value = streamsx.spl.op.Expression.expression(value.name)
     return value
@@ -154,6 +156,7 @@ class SPLGraph(object):
         return lgi
 
     def generateSPLGraph(self):
+        self.topology._prepare()
         _graph = {}
         _graph["name"] = self.name
         _graph["namespace"] = self.namespace
@@ -193,17 +196,19 @@ class SPLGraph(object):
          for location in fls:
              files = fls[location]
              for path in files:
-                 f = {}
-                 f["source"] = path
-                 f["target"] = location
-                 includes.append(f)
+                 if isinstance(path, str):
+                     # Simple file with a source to copy
+                     f = {}
+                     f['source'] = path
+                     f['target'] = location
+                     includes.append(f)
+                 else:
+                     # Arbitray file description
+                     includes.append(path)
 
     def getLastOperator(self):
         return self.operators[len(self.operators) -1]      
         
-    def printJSON(self):
-      print(json.dumps(self.generateSPLGraph(), sort_keys=True, indent=4, separators=(',', ': ')))
-
 class _SPLInvocation(object):
 
     def __init__(self, index, kind, function, name, params, graph, view_configs = None, sl=None):
@@ -220,6 +225,7 @@ class _SPLInvocation(object):
         self.sl = sl
         self._placement = {}
         self._start_op = False
+        self.config = {}
 
         if view_configs is None:
             self.view_configs = []
@@ -230,10 +236,10 @@ class _SPLInvocation(object):
         self.outputPorts = []
         self._layout_hints = {}
 
-    def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema= CommonSchema.Python,partitioned_keys=None):
+    def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema= CommonSchema.Python,partitioned_keys=None, routing = None):
         if name is None:
             name = self.name + "_OUT"+str(len(self.outputPorts))
-        oport = OPort(name, self, len(self.outputPorts), schema, oWidth, partitioned_keys)
+        oport = OPort(name, self, len(self.outputPorts), schema, oWidth, partitioned_keys, routing=routing)
         self.outputPorts.append(oport)
         if schema == CommonSchema.Python:
             self.viewable = False
@@ -295,7 +301,7 @@ class _SPLInvocation(object):
             _inputs.append(input.getSPLInputPort())
         _op["outputs"] = _outputs
         _op["inputs"] = _inputs
-        _op["config"] = {}
+        _op["config"] = self.config
         _op["config"]["streamViewability"] = self.viewable
         _op["config"]["viewConfigs"] = self.view_configs
         if self._placement:
@@ -338,7 +344,7 @@ class _SPLInvocation(object):
         return _op
 
     def _addOperatorFunction(self, function):
-        if (function == None):
+        if (function is None):
             return None
         if not hasattr(function, "__call__"):
             raise "argument to _addOperatorFunction is not callable"
@@ -456,7 +462,7 @@ class IPort(object):
         return _iport
 
 class OPort(object):
-    def __init__(self, name, operator, index, schema, width=None, partitioned_keys=None):
+    def __init__(self, name, operator, index, schema, width=None, partitioned_keys=None, routing=None):
         self.name = name
         self.operator = operator
         self.schema = _stream_schema(schema)
@@ -464,6 +470,7 @@ class OPort(object):
         self.width = width
         self.partitioned = partitioned_keys is not None
         self.partitioned_keys = partitioned_keys
+        self.routing = routing
 
         self.inputPorts = []
 
@@ -479,12 +486,15 @@ class OPort(object):
         _oport["type"] = self.schema.schema()
         _oport["name"] = self.name
         _oport["connections"] = [port.name for port in self.inputPorts]
+        _oport["routing"] = self.routing
+
         if not self.width is None:
             _oport["width"] = int(self.width)
         if not self.partitioned is None:
             _oport["partitioned"] = self.partitioned
         if self.partitioned_keys is not None:
             _oport["partitionedKeys"] = self.partitioned_keys
+
         return _oport
 
 class Marker(_SPLInvocation):

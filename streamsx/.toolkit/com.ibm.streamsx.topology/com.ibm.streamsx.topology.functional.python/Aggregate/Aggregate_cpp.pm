@@ -357,12 +357,16 @@ sub main::generate($$) {
    print '    PyObject *value = items;', "\n";
    print '  OPort0Type otuple;', "\n";
    print "\n";
+   print '  try {', "\n";
    print '  ', "\n";
    print '  if (SPLPY_AGGREGATE(funcop_->callable(), value,', "\n";
    print '       otuple.get_';
    print $model->getOutputPortAt(0)->getAttributeAt(0)->getName();
    print '(), occ_)){  ', "\n";
    print '     submit(otuple, 0);', "\n";
+   print '  }', "\n";
+   print '  } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '     SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
    print '  }', "\n";
    print '  submit(Punctuation::WindowMarker, 0);', "\n";
    print '}', "\n";

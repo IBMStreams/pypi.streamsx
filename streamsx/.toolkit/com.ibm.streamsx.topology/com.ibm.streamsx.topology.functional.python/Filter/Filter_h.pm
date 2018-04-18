@@ -32,6 +32,8 @@ sub main::generate($$) {
    print '  void process(Punctuation const & punct, uint32_t port);', "\n";
    print "\n";
    print 'private:', "\n";
+   print '    SplpyOp * op() { return funcop_; }', "\n";
+   print "\n";
    print '    // Members', "\n";
    print '    // Control for interaction with Python', "\n";
    print '    SplpyFuncOp *funcop_;', "\n";

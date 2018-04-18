@@ -11,6 +11,7 @@ import sysconfig
 import inspect
 import imp
 import glob
+import json
 import os
 import shutil
 import argparse
@@ -37,8 +38,12 @@ class _SubmitParamArg(argparse.Action):
             sp[name] = value
         
 
-def main():
-    cmd_args = _parse_args()
+
+def submit(args=None):
+    """ Performs the submit according to arguments and
+    returns an object describing the result.
+    """
+    cmd_args = _parse_args(args)
     if cmd_args.topology is not None:
         app = _get_topology_app(cmd_args)
     elif cmd_args.main_composite is not None:
@@ -47,11 +52,19 @@ def main():
         app = _get_bundle(cmd_args)
     _job_config_args(cmd_args, app)
     sr = _submit(cmd_args, app)
+    if 'return_code' not in sr:
+        sr['return_code'] = 1;
     print(sr)
     return sr
 
+def main(args=None):
+    """ Performs the submit according to arguments and
+    returns 0 for success, non-zero for failure.
+    """
+    sr = submit(args)
+    return int(sr['return_code'])
 
-def _parse_args():
+def _parse_args(args):
     """ Argument parsing
     """
     cmd_parser = argparse.ArgumentParser(description='Execute a Streams application using a Streaming Analytics service.')
@@ -68,6 +81,16 @@ def _parse_args():
     bld_group = cmd_parser.add_argument_group('Build options', 'Application build options')
     bld_group.add_argument('--toolkits', nargs='+', help='SPL toolkit containing the main composite and any other required SPL toolkits.')
 
+    _define_jco_args(cmd_parser)
+
+    cmd_args = cmd_parser.parse_args(args)
+    return cmd_args
+
+def _define_jco_args(cmd_parser):
+    """
+    Define job configuration arguments.
+    Returns groups defined, currently one.
+    """
     jo_group = cmd_parser.add_argument_group('Job options', 'Job configuration options')
 
     jo_group.add_argument('--job-name', help='Job name')
@@ -76,8 +99,9 @@ def _parse_args():
 
     jo_group.add_argument('--submission-parameters', '-p', nargs='+', action=_SubmitParamArg, help="Submission parameters as name=value pairs")
 
-    cmd_args = cmd_parser.parse_args()
-    return cmd_args
+    jo_group.add_argument('--job-config-overlays', help="Path to file containing job configuration overlays JSON. Overrides any job configuration set by the application." , metavar='file')
+
+    return jo_group,
 
 def _get_topology_app(cmd_args):
     mn, fn = cmd_args.topology.rsplit('.', 1)
@@ -162,7 +186,10 @@ def _submit_bundle(cmd_args, app):
 
 def _job_config_args(cmd_args, app):
     cfg = app.cfg
-    if not ctx.ConfigParams.JOB_CONFIG in cfg:
+    if cmd_args.job_config_overlays:
+        with open(cmd_args.job_config_overlays) as fd:
+            ctx.JobConfig.from_overlays(json.load(fd)).add(cfg)
+    elif not ctx.ConfigParams.JOB_CONFIG in cfg:
         ctx.JobConfig().add(cfg)
     jc = cfg[ctx.ConfigParams.JOB_CONFIG]
     if cmd_args.job_name:
@@ -175,7 +202,4 @@ def _job_config_args(cmd_args, app):
         jc.submission_parameters.update(cmd_args.submission_parameters)
     
 if __name__ == '__main__':
-    sr = main()
-    if 'return_code' in sr:
-        sys.exit(int(sr['return_code']))
-    sys.exit(1)
+    sys.exit(main())

@@ -116,6 +116,7 @@ sub main::generate($$) {
    print '// Tuple processing for non-mutating ports', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
+   print 'try {', "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
    # functional operator
@@ -216,6 +217,9 @@ sub main::generate($$) {
    print '  if (streamsx::topology::Splpy::pyTupleFilter(funcop_->callable(), value)) {', "\n";
    print '      submit(tuple, 0);', "\n";
    print '  }', "\n";
+   print '} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '    SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '}', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";

@@ -153,6 +153,7 @@ sub main::generate($$) {
    print '// Tuple processing for non-mutating ports', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
+   print 'try {', "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
    # functional operator
@@ -274,6 +275,9 @@ sub main::generate($$) {
    print "\n";
    }
    print "\n";
+   print '} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '  SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '}', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
@@ -307,6 +311,7 @@ sub main::generate($$) {
      }
    print "\n";
    print ' ', "\n";
+   print '// Python tuple to SPL tuple', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::fromPythonToPort';
    print $oport->getIndex();
    print '(PyObject *pyTuple ';
@@ -316,6 +321,8 @@ sub main::generate($$) {
    print '  ';
    print $oport->getCppTupleType();
    print ' otuple;', "\n";
+   print "\n";
+   print 'try {', "\n";
    print "\n";
    print '  Py_ssize_t frs = PyTuple_GET_SIZE(pyTuple); ', "\n";
    print '    ', "\n";
@@ -376,12 +383,109 @@ sub main::generate($$) {
     
    print "\n";
    print "\n";
-   print '  Py_BEGIN_ALLOW_THREADS', "\n";
-   print '  submit(otuple, ';
+   print ' } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '    SPLPY_OP_HANDLE_EXCEPTION_INFO(excInfo);', "\n";
+   print '    return;', "\n";
+   print ' }', "\n";
+   print "\n";
+   print ' STREAMSX_TUPLE_SUBMIT_ALLOW_THREADS(otuple, ';
    print $oport->getIndex();
    print ');', "\n";
-   print '  Py_END_ALLOW_THREADS', "\n";
    print '}', "\n";
+   print "\n";
+   {
+   no strict 'vars';
+   if (defined $FROM_DICT_TMP) {
+   print "\n";
+   print "\n";
+   print '// Python dict to SPL tuple', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::fromPythonDictToPort';
+   print $oport->getIndex();
+   print '(PyObject *pyDict ';
+   print $itypeparam;
+   print ') {', "\n";
+   print "\n";
+   print '  ';
+   print $oport->getCppTupleType();
+   print ' otuple;', "\n";
+   print "\n";
+   print 'try {', "\n";
+   print "\n";
+   print '  Py_ssize_t available = PyDict_Size(pyDict); ', "\n";
+   print '    ', "\n";
+     if (defined $iport) {
+       print 'bool setAttr = false;';
+     }
+   
+     for (my $ai = $oport->getNumberOfAttributes() - 1; $ai >= 0; --$ai) {
+       
+       my $attribute = $oport->getAttributeAt($ai);
+       my $name = $attribute->getName();
+       my $atype = $attribute->getSPLType();
+       splToPythonConversionCheck($atype);
+       
+       if (defined $iport) {
+                print 'setAttr = false;';
+       }
+   print "\n";
+   print '    if (available > 0) {', "\n";
+   print '         // Value from the Python function', "\n";
+   print '         PyObject *pyAttrValue = PyDict_GetItem(pyDict, PyTuple_GET_ITEM(pyOutNames_';
+   print $oport->getIndex();
+   print ', ';
+   print $ai;
+   print '));', "\n";
+   print '         if (pyAttrValue != NULL) {', "\n";
+   print '             --available;', "\n";
+   print '             if (!SplpyGeneral::isNone(pyAttrValue)) {', "\n";
+   print '                  streamsx::topology::pySplValueFromPyObject(', "\n";
+   print '                               otuple.get_';
+   print $name;
+   print '(), pyAttrValue);', "\n";
+       if (defined $iport) {
+                print 'setAttr = true;';
+       }
+   print "\n";
+   print '           }', "\n";
+   print '        }', "\n";
+   print '   }', "\n";
+       if (defined $iport) {
+       
+       # Only copy attributes across if they match on name and type
+       my $matchInputAttr = $iport->getAttributeByName($name);
+       if (defined $matchInputAttr) {
+          if ($matchInputAttr->getSPLType() eq $attribute->getSPLType()) {
+   print "\n";
+   print '    if (!setAttr) {', "\n";
+   print '      // value from the input attribute', "\n";
+   print '      otuple.set_';
+   print $name;
+   print '(ituple.get_';
+   print $name;
+   print '());', "\n";
+   print '    }', "\n";
+         }
+       }
+      }
+   print "\n";
+   print '         ', "\n";
+   }
+    
+   print "\n";
+   print "\n";
+   print ' } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '    SPLPY_OP_HANDLE_EXCEPTION_INFO(excInfo);', "\n";
+   print '    return;', "\n";
+   print ' }', "\n";
+   print "\n";
+   print ' STREAMSX_TUPLE_SUBMIT_ALLOW_THREADS(otuple, ';
+   print $oport->getIndex();
+   print ');', "\n";
+   print '}', "\n";
+   print "\n";
+   }
+   }
+   print "\n";
    }
    print "\n";
    print "\n";

@@ -74,6 +74,8 @@ sub main::generate($$) {
    }
    print "\n";
    print "\n";
+   print '    SplpyOp * op() { return funcop_; }', "\n";
+   print "\n";
    print '    // Members', "\n";
    print '    // Control for interaction with Python', "\n";
    print '    SplpyFuncOp *funcop_;', "\n";
