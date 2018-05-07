@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.2.1.1" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.2" version="1.9.2.beta">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.2" version="1.9.3.beta">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -142,6 +142,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
           <description>Style stream tuples are passed into Python.</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -164,6 +170,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
@@ -190,6 +202,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
@@ -220,6 +238,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
@@ -249,6 +273,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
@@ -277,6 +307,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
           <description>Style stream tuples are passed into Python.</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -294,6 +330,12 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
@@ -942,6 +984,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
           <description>Style stream tuples are passed into Python.</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -964,6 +1012,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
@@ -990,6 +1044,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
@@ -1020,6 +1080,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
@@ -1049,6 +1115,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
         </parameter>
@@ -1077,6 +1149,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         <parameter cardinality="1" expressionMode="Constant" name="pyStyle" optional="true" type="rstring">
           <description>Style stream tuples are passed into Python.</description>
         </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
+        </parameter>
         <inputPort maxNumPorts="1" minNumPorts="1" optional="false" windowPunctInputMode="Oblivious">
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
@@ -1094,6 +1172,12 @@ Specifies command-line arguments that are passed to the Java virtual machine tha
         </parameter>
         <parameter cardinality="1" expressionMode="AttributeFree" name="pyCallable" optional="true" type="rstring">
           <description>Serialized instance of a callable class</description>
+        </parameter>
+        <parameter expressionMode="Constant" name="submissionParamNames" optional="true" type="rstring">
+          <description>Submission parameter names</description>
+        </parameter>
+        <parameter expressionMode="AttributeFree" name="submissionParamValues" optional="true" type="rstring">
+          <description>Submission parameter values</description>
         </parameter>
         <parameter cardinality="1" expressionMode="Constant" name="outputConnections" optional="true" type="int32">
           <description>Number of output connections.</description>
