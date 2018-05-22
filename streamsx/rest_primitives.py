@@ -139,7 +139,7 @@ class _ResourceElement(object):
         raise ValueError("Multiple resources matching: {0}".format(id))
 
 class _StreamsRestClient(object):
-    """Handles the session connection with the Streams REST API
+    """Session connection with the Streams REST API
     """
     def __init__(self, username, password):
         """
@@ -377,8 +377,7 @@ def _get_view_dict_tuple(item):
 
 
 class View(_ResourceElement):
-    """The View resource element provides access to information about a view that is associated with an active job, and
-    exposes methods to retrieve data from the view's stream.
+    """View on a stream.
 
     Attributes:
         id (str): An unique identifier for the view.
@@ -472,7 +471,7 @@ class View(_ResourceElement):
 
 
 class ViewItem(_ResourceElement):
-    """Represents the data of a tuple, its type, and the time when it was collected from the stream.
+    """A stream tuple in view.
 
     Attributes:
         collectionTime (long): Epoch time when this viewItem is collected from the stream.
@@ -492,8 +491,7 @@ class ViewItem(_ResourceElement):
 
 
 class Host(_ResourceElement):
-    """The host element resource provides access to information about a host that is allocated to a domain as a
-    resource for running Streams services and applications.
+    """Resource in a Streams domain or instance.
 
     Attributes:
         name (str): Configuration name for the IBM Streams resource.
@@ -519,7 +517,7 @@ class Host(_ResourceElement):
 
 
 class Job(_ResourceElement):
-    """The job element resource provides access to information about a submitted job within a specified instance.
+    """A running streams application.
 
     Attributes:
         id (str): job ID.
@@ -637,7 +635,7 @@ class Job(_ResourceElement):
             >>> job = instances[0].get_jobs()[0]
             >>> operators = job.get_operators(name="*temperatureSensor*")
 
-        .versionsince:: 1.9 `name` parameter
+        .. versionsince:: 1.9 `name` parameter
         """
         return self._get_elements(self.operators, 'operators', Operator, name=name)
 
@@ -690,7 +688,7 @@ class Job(_ResourceElement):
 
 
 class Operator(_ResourceElement):
-    """The operator element resource provides access to information about a specific operator in a job.
+    """An operator invocation within a job.
 
     Attributes:
         name(str): Operator name.
@@ -770,8 +768,7 @@ class Operator(_ResourceElement):
 
 
 class OperatorConnection(_ResourceElement):
-    """The operator connection element resource provides access to information about a connection between two operator
-    ports.
+    """Connection between operators.
 
     Attributes:
         id(str): Unique ID of this operator connection within the instance.
@@ -790,8 +787,7 @@ class OperatorConnection(_ResourceElement):
 
 
 class OperatorOutputPort(_ResourceElement):
-    """Operator output port resource provides access to information about an output port
-    for a specific operator.
+    """Operator output port.
 
     Attributes:
         name(str): Name of this output port.
@@ -832,7 +828,7 @@ class OperatorOutputPort(_ResourceElement):
         return self._get_elements(self.metrics, 'metrics', Metric, name=name)
 
 class OperatorInputPort(_ResourceElement):
-    """Information about an input port for an operator.
+    """Operator input port.
 
     Attributes:
         name(str): Name of this input port.
@@ -864,7 +860,7 @@ class OperatorInputPort(_ResourceElement):
 
 
 class Metric(_ResourceElement):
-    """Metric resource provides access to information about a Streams metric.
+    """Streams custom or system metric.
 
     Attributes:
         name(str): Name of this metric.
@@ -888,7 +884,8 @@ class Metric(_ResourceElement):
 
 
 class PE(_ResourceElement):
-    """The processing element (PE) resource provides access to information about a PE.
+    """Processing element (PE) within a job.
+    A processing element hosts one or more operators within a single job.
 
     Attributes:
         id(str): PE ID.
@@ -1003,10 +1000,19 @@ class PE(_ResourceElement):
         """
         return self._get_elements(self.metrics, 'metrics', Metric, name=name)
 
+    def get_resource_allocation(self):
+        """Get the :py:class:`ResourceAllocation` element tance.
+
+        Returns:
+            ResourceAllocation: Resource allocation used to access information about the resource where this PE is running.
+
+        .. versionadded:: 1.9
+        """
+        return ResourceAllocation(self.rest_client.make_request(self.resourceAllocation), self.rest_client)
+
 
 class PEConnection(_ResourceElement):
-    """The processing element (PE) connection resource provides access to information about a connection between two
-    processing element (PE) ports.
+    """Stream connection between two PEs.
 
     Attributes:
         id(str): PE connection ID.
@@ -1027,8 +1033,7 @@ class PEConnection(_ResourceElement):
 
 
 class ResourceAllocation(_ResourceElement):
-    """The ResourceAllocation element resource provides access to information about a resource that is allocated to
-    an IBM Streams instance.
+    """A resource that is allocated to an IBM Streams instance.
 
     Attributes:
         resourceType(str): Identifies the REST resource type, which is *resourceAllocation*.
@@ -1045,11 +1050,52 @@ class ResourceAllocation(_ResourceElement):
         >>> print(allocations[0].resourceType)
         resourceAllocation
     """
-    pass
+    def get_resource(self):
+        """Get the :py:class:`Resource` of the resource allocation.
+
+        Returns:
+            Resource: Resource for this allocation.
+
+        .. versionadded:: 1.9
+        """
+        return Resource(self.rest_client.make_request(self.resource), self.rest_client)
+
+    def get_pes(self):
+        """Get the list of :py:class:`PE` running on this resource
+        in its instance.
+
+        Returns:
+            list(PE): List of PE running on this resource.
+
+        .. note:: If ``applicationResource`` is `False` an empty list is returned.
+        .. versionadded:: 1.9
+        """
+        if self.applicationResource:
+            return self._get_elements(self.pes, 'pes', PE)
+        else:
+            return []
+
+    def get_jobs(self, name=None):
+        """Retrieves jobs running on this resource in its instance.
+
+        Args:
+            name (str, optional): Only return jobs containing property **name** that matches `name`. `name` can be a
+                regular expression. If `name` is not supplied, then all jobs are returned.
+
+        Returns:
+            list(Job): A list of jobs matching the given `name`.
+        
+        .. note:: If ``applicationResource`` is `False` an empty list is returned.
+        .. versionadded:: 1.9
+        """
+        if self.applicationResource:
+            return self._get_elements(self.jobs, 'jobs', Job, None, name)
+        else:
+            return []
 
 
 class ActiveService(_ResourceElement):
-    """The ActiveService element resource provides access to information about a domain or an instance service.
+    """Domain or an instance service.
 
     Attributes:
         resourceType(str): Identifies the REST resource type, which is *activeService*.
@@ -1072,7 +1118,7 @@ class ActiveService(_ResourceElement):
 
 
 class Installation(_ResourceElement):
-    """The Installation element resource provides access to information about IBM Streams installations.
+    """IBM Streams installation.
 
     Attributes:
         resourceType(str): Identifies the REST resource type, which is *installation*.
@@ -1089,7 +1135,7 @@ class Installation(_ResourceElement):
 
 
 class ImportedStream(_ResourceElement):
-    """Imported stream resource represents a stream that has been imported by a job.
+    """Stream imported by a job.
 
     Attributes:
         resourceType(str): Identifies the REST resource type, which is *importedStream*.
@@ -1106,7 +1152,7 @@ class ImportedStream(_ResourceElement):
 
 
 class ExportedStream(_ResourceElement):
-    """Exported stream resource represents a stream that has been exported by a job.
+    """Stream exported stream by a job.
 
     Attributes:
         resourceType(str): Identifies the REST resource type, which is *exportedStream*.
@@ -1164,7 +1210,7 @@ class ExportedStream(_ResourceElement):
 
 
 class Instance(_ResourceElement):
-    """The instance element resource provides access to information about a Streams instance.
+    """IBM Streams instance.
 
     Attributes:
         id(str): Unique ID for this instance.
@@ -1202,7 +1248,7 @@ class Instance(_ResourceElement):
             >>> instance = sc.get_instances()[0]
             >>> operators = instance.get_operators(name="*temperatureSensor*")
 
-        .versionsince:: 1.9 `name` parameter
+        .. versionsince:: 1.9 `name` parameter
         """
         return self._get_elements(self.operators, 'operators', Operator, name=name)
 
@@ -1371,7 +1417,7 @@ class Instance(_ResourceElement):
 
 
 class ResourceTag(object):
-    """Contains information for a tag that is defined in a Streams domain
+    """Resource tag defined in a Streams domain
 
     Attributes:
         definition_format_properties(bool): Indicates whether the resource definition consists of one or more
@@ -1442,7 +1488,8 @@ class PublishedTopic(object):
 
 
 class Domain(_ResourceElement):
-    """The domain element resource provides access to information about a Streams domain.
+    """IBM Streams domain. A domain contains instances that support
+    running Streams applications as jobs.
 
     Attributes:
         id(str): Unique ID for this domain.
@@ -1499,14 +1546,44 @@ class Domain(_ResourceElement):
         """
         return self._get_elements(self.resources, 'resources', Resource)
 
-
 class Resource(_ResourceElement):
-    """The Streams resource element provides access to information about a Streams resource.
+    """A resource available to a IBM Streams domain.
+
+    Attributes:
+        id(str): Resource identifier.
+        displayName(str): Resource display name.
+        ipAddress(str): IP address.
+        status(str): Resource status.
+        tags(list[str]): Tags assigned to resource.
+
+    .. versionadded:: 1.9
+    """
+    def get_metrics(self, name=None):
+        """Get metrics for this resource.
+
+        Args:
+            name(str, optional): Only return metrics matching `name`, where `name` can be a regular expression.  If
+                `name` is not supplied, then all metrics for this resource are returned.
+
+        Returns:
+             list(Metric): List of matching metrics.
+        """
+        return self._get_elements(self.metrics, 'metrics', Metric, name=name)
+
+class RestResource(_ResourceElement):
+    """HTTP REST resource identifier.
 
     Attributes:
         name(str): Resource name.
+        resource(str): A string that identifies the URI for the resource.
+
+    .. versionsince:: 1.9 Changed to `RestResource` from `Resource`.
     """
     def get_resource(self):
+        """Make a request against this REST resource.
+           Returns:
+               dict: JSON response.
+        """
         return self.rest_client.make_request(self.resource)
 
 

@@ -83,8 +83,10 @@ sub main::generate($$) {
    print "\n";
    print '    { // start lock', "\n";
    print '      SplpyGIL lock;', "\n";
-   print '      if (pyReturnVar != NULL)', "\n";
+   print '      if (pyReturnVar != NULL) {', "\n";
    print '          Py_DECREF(pyReturnVar);', "\n";
+   print '          pyReturnVar = NULL;', "\n";
+   print '      }', "\n";
    print "\n";
    print '      pyReturnVar = PyObject_CallObject(funcop_->callable(), NULL);', "\n";
    print "\n";
