@@ -48,9 +48,6 @@ sub main::generate($$) {
        $pystyle_fn = 'tuple';
     }
    print "\n";
-    my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
-    my $oport = $model->getOutputPortAt(0);
-   print "\n";
    print "\n";
    print 'class MY_OPERATOR : public MY_BASE_OPERATOR,', "\n";
    print '      public WindowEvent<PyObject *>', "\n";
@@ -77,14 +74,6 @@ sub main::generate($$) {
    print '     Window<PyObject *>::PartitionType const & partition);', "\n";
    print "\n";
    print 'private:', "\n";
-   if ($pyoutstyle eq 'dict') {
-   print "\n";
-   print '    void fromPythonToPort0(PyObject * pyTuple, ';
-   print $oport->getCppTupleType();
-   print ' & otuple);', "\n";
-   }
-   print "\n";
-   print "\n";
    print '    SplpyOp * op() { return funcop_; }', "\n";
    print "\n";
    print '    // Members', "\n";

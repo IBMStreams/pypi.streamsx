@@ -63,8 +63,8 @@ sub main::generate($$) {
     # Select the Python wrapper function
     my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
    
-    if (($pystyle eq 'dict') || ($pyoutstyle eq 'dict') || ($pystyle eq 'tuple')) {
-       SPL::CodeGen::exitln("Dictionary input and output not supported.");
+    if (($pystyle eq 'dict') || ($pystyle eq 'tuple')) {
+       SPL::CodeGen::exitln("Dictionary input not supported.");
     }
     
     my $out_pywrapfunc=  'object_in__' . $pyoutstyle . '_out';

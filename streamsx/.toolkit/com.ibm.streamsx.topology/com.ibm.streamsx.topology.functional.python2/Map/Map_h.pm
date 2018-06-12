@@ -71,6 +71,7 @@ sub main::generate($$) {
    if ($pyoutstyle eq 'dict') {
    print "\n";
    print '    void fromPythonToPort0(PyObject * pyTuple);', "\n";
+   print '    void fromPythonDictToPort0(PyObject * pyDict);', "\n";
    }
    print "\n";
    print "\n";
@@ -81,6 +82,7 @@ sub main::generate($$) {
    print '    SplpyFuncOp *funcop_;', "\n";
    print '    ', "\n";
    print '    PyObject *pyInStyleObj_;', "\n";
+   print '    PyObject *pyOutNames_0;', "\n";
    print "\n";
    print '    // Number of output connections when passing by ref', "\n";
    print '    // -1 when cannot pass by ref', "\n";

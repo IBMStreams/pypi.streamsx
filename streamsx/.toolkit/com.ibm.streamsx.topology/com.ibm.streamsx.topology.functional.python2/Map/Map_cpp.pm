@@ -67,11 +67,13 @@ sub main::generate($$) {
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
    print '   pyInStyleObj_(NULL),', "\n";
+   print '   pyOutNames_0(NULL),', "\n";
    print '   occ_(-1)', "\n";
    print '{', "\n";
    print '    const char * wrapfn = "';
    print $pywrapfunc;
    print '";', "\n";
+   print "\n";
    print "\n";
    # If occ parameter is positive then pass-by-ref is possible
    # Generate code to allow pass by ref but only use when
@@ -131,14 +133,24 @@ sub main::generate($$) {
    print '}', "\n";
     } 
    print "\n";
+   print "\n";
+   if ($pyoutstyle eq 'dict') {
+   print "\n";
+   print '  {', "\n";
+   print '  SplpyGIL lock;', "\n";
+   print '  pyOutNames_0 = Splpy::pyAttributeNames(getOutputPortAt(0));', "\n";
+   print '  }', "\n";
+   }
+   print "\n";
    print '}', "\n";
    print "\n";
    print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
-   print '  if (pyInStyleObj_) {', "\n";
-   print '      SplpyGIL lock;', "\n";
-   print '      Py_DECREF(pyInStyleObj_);', "\n";
+   print '  {', "\n";
+   print '    SplpyGIL lock;', "\n";
+   print '      Py_XDECREF(pyInStyleObj_);', "\n";
+   print '      Py_XDECREF(pyOutNames_0);', "\n";
    print '  }', "\n";
    print "\n";
    print '  delete funcop_;', "\n";
@@ -259,8 +271,16 @@ sub main::generate($$) {
    print '  PyObject * ret = streamsx::topology::Splpy::pyTupleMap(funcop_->callable(), value);', "\n";
    print '  if (ret == NULL)', "\n";
    print '     return;', "\n";
-   print '  fromPythonToPort0(ret);', "\n";
-   print '  Py_DECREF(ret);', "\n";
+   print '  if (PyTuple_Check(ret)) {', "\n";
+   print '      fromPythonToPort0(ret);', "\n";
+   print '      Py_DECREF(ret);', "\n";
+   print '  } else if (PyDict_Check(ret)) {', "\n";
+   print '      fromPythonDictToPort0(ret);', "\n";
+   print '      Py_DECREF(ret);', "\n";
+   print '  } else {', "\n";
+   print '          throw SplpyGeneral::generalException("submit",', "\n";
+   print '             "Fatal error: Value submitted must be a Python tuple or dict.");', "\n";
+   print '  }', "\n";
    print '  }', "\n";
    print '  ', "\n";
     } else { 
@@ -393,11 +413,6 @@ sub main::generate($$) {
    print ');', "\n";
    print '}', "\n";
    print "\n";
-   {
-   no strict 'vars';
-   if (defined $FROM_DICT_TMP) {
-   print "\n";
-   print "\n";
    print '// Python dict to SPL tuple', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::fromPythonDictToPort';
    print $oport->getIndex();
@@ -482,10 +497,6 @@ sub main::generate($$) {
    print $oport->getIndex();
    print ');', "\n";
    print '}', "\n";
-   print "\n";
-   }
-   }
-   print "\n";
    }
    print "\n";
    print "\n";
