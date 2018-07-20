@@ -878,7 +878,8 @@ class Stream(_placement._Placement, object):
         if self.oport.schema == streamsx.topology.schema.CommonSchema.Python:
             view_stream = self.as_json(force_object=False)._layout(hidden=True)
             # colocate map operator with stream that is being viewed.
-            self._colocate(view_stream, 'view')
+            if self._placeable:
+                self._colocate(view_stream, 'view')
         else:
             view_stream = self
 
@@ -1158,7 +1159,7 @@ class Stream(_placement._Placement, object):
         .. versionadded:: 1.9
         """
         self.oport.operator.config['parallel'] = True
-        self.oport.operator.config['width'] = width
+        self.oport.operator.config['width'] = streamsx.topology.graph._as_spl_json(width, int)
         return self
 
     def last(self, size=1):
