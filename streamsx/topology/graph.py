@@ -10,6 +10,7 @@ import sys
 import uuid
 import json
 import inspect
+import datetime
 import pickle
 from enum import Enum
 
@@ -87,6 +88,16 @@ class SPLGraph(object):
         self._used_names = {'list', 'tuple', 'int'}
         self._layout_group_id = 0
         self._colocate_tag_mapping = {}
+        self._id_gen = 0
+
+    def _unique_id(self, prefix):
+        """
+        Generate a unique (within the graph) identifer
+        internal to graph generation.
+        """
+        _id = self._id_gen
+        self._id_gen += 1
+        return prefix + str(_id)
 
     def get_views(self):
         return self._views
@@ -148,7 +159,7 @@ class SPLGraph(object):
         self.operators.append(op)
         if not function is None:
             dep_instance = function
-            if isinstance(function, streamsx.topology.runtime._WrappedInstance):
+            if isinstance(function, streamsx._streams._runtime._WrapOpLogic):
                 dep_instance = type(function._callable)
 
             if not inspect.isbuiltin(dep_instance):
@@ -173,10 +184,12 @@ class SPLGraph(object):
         _graph["namespace"] = self.namespace
         _graph["public"] = True
         _graph["config"] = {}
+        self._determine_model(_graph["config"])
         _graph["config"]["includes"] = []
         _graph['config']['spl'] = {}
         _graph['config']['spl']['toolkits'] = self._spl_toolkits
         self._add_parameters(_graph)
+        self._add_checkpoint(_graph)
         if self._colocate_tag_mapping:
             _graph['config']['colocateTagMapping'] = self._colocate_tag_mapping
         _ops = []
@@ -188,7 +201,20 @@ class SPLGraph(object):
 
         _graph["operators"] = _ops
         return _graph
-   
+
+    def _determine_model(self, graph_cfg):
+        # Python can be used to build pure SPL
+        # graphs so if that's the case mark the
+        # graph model/langauge as spl/spl
+        all_spl = True
+        for op in self.operators:
+            if op.model != 'spl':
+                all_spl = False
+                break
+
+        graph_cfg['model'] = 'spl' if all_spl else 'functional' 
+        graph_cfg['language'] = 'spl' if all_spl else 'python'
+
     def _add_packages(self, includes):
         for package_path in self.resolver.packages:
            mf = {}
@@ -227,9 +253,19 @@ class SPLGraph(object):
         for name, sp in sps.items():
             params[name] = sp.spl_json()
 
-    def getLastOperator(self):
-        return self.operators[len(self.operators) -1]      
-        
+    def _add_checkpoint(self, _graph):
+
+        if self.topology.checkpoint_period is None:
+            pass
+        else:            
+            unit = "MICROSECONDS"
+
+            _graph["config"]["checkpoint"] = {}
+            _graph["config"]["checkpoint"]["mode"] = "periodic"
+            _graph["config"]["checkpoint"]["period"] = self.topology.checkpoint_period * 1000 * 1000 # Seconds to microseconds
+            _graph["config"]["checkpoint"]["unit"] = unit
+
+
 class _SPLInvocation(object):
 
     def __init__(self, index, kind, function, name, params, graph, view_configs = None, sl=None, stateful = False):
@@ -249,6 +285,9 @@ class _SPLInvocation(object):
         self._placement = {}
         self._start_op = False
         self.config = {}
+        self._consistent = None
+        # Arbitrary JSON for operator
+        self._op_def = {}
 
         if view_configs is None:
             self.view_configs = []
@@ -272,7 +311,11 @@ class _SPLInvocation(object):
         return oport
 
     def setParameters(self, params):
+        import streamsx.spl.op
         for param in params:
+            if params[param] is None:
+                # map Python None to SPL null
+                params[param] = streamsx.spl.op.Expression.expression("null")
             self.params[param] = params[param]
 
     def appendParameters(self, params):
@@ -289,22 +332,22 @@ class _SPLInvocation(object):
     def addViewConfig(self, view_configs):
         self.view_configs.append(view_configs)
 
-    def addInputPort(self, name=None, outputPort=None, window_config=None):
-        if name is None:
-            name = self.name + "_IN"+ str(len(self.inputPorts))
+    def addInputPort(self, outputPort=None, window_config=None, alias=None):
         iPortSchema = CommonSchema.Python    
         if not outputPort is None :
             iPortSchema = outputPort.schema        
-        iport = IPort(name, self, len(self.inputPorts),iPortSchema, window_config)
+        iport = IPort(self, len(self.inputPorts),iPortSchema, window_config)
         self.inputPorts.append(iport)
 
         if not outputPort is None:
             iport.connect(outputPort)
+        if alias:
+            iport._alias = alias
         return iport
 
 
     def generateSPLOperator(self):
-        _op = {}
+        _op = dict(self._op_def)
         _op["name"] = self.name
         if self.category:
             _op["category"] = self.category
@@ -365,6 +408,31 @@ class _SPLInvocation(object):
         if self._layout_hints:
             _op['layout'] = self._layout_hints
 
+        if self._consistent is not None:
+            _op['consistent'] = {}
+            consistent = _op['consistent']
+            consistent['trigger'] = self._consistent.trigger.name
+            if self._consistent.trigger == streamsx.topology.consistent.ConsistentRegionConfig.Trigger.PERIODIC:
+                if isinstance(self._consistent.period, datetime.timedelta):
+                    consistent_period = self._consistent.period.total_seconds()
+                else:
+                    consistent_period = float(self._consistent.period)
+                consistent['period'] = str(consistent_period)
+
+            if isinstance(self._consistent.drain_timeout, datetime.timedelta):
+                consistent_drain = self._consistent.drain_timeout.total_seconds();
+            else:
+                consistent_drain = float(self._consistent.drain_timeout)
+            consistent['drainTimeout'] = str(consistent_drain)
+
+            if isinstance(self._consistent.reset_timeout, datetime.timedelta):
+                consistent_reset = self._consistent.reset_timeout.total_seconds();
+            else:
+                consistent_reset = float(self._consistent.reset_timeout)
+            consistent['resetTimeout'] = str(consistent_reset)
+
+            consistent['maxConsecutiveResetAttempts'] = int(self._consistent.max_consecutive_attempts)
+
         # Callout to allow a ExtensionOperator
         # to augment the JSON
         if hasattr(self, '_ex_op'):
@@ -382,11 +450,12 @@ class _SPLInvocation(object):
 
         # Wrap a lambda as a callable class instance
         if isinstance(function, types.LambdaType) and function.__name__ == "<lambda>" :
-            function = streamsx.topology.runtime._Callable(function)
+            function = streamsx.topology.runtime._Callable(function, no_context=True)
         elif function.__module__ == '__main__':
             # Function/Class defined in main, create a callable wrapping its
             # dill'ed form
-            function = streamsx.topology.runtime._Callable(function)
+            function = streamsx.topology.runtime._Callable(function,
+                no_context = True if inspect.isroutine(function) else None)
          
         if inspect.isroutine(function):
             # callable is a function
@@ -420,20 +489,18 @@ class _SPLInvocation(object):
         """
         if isinstance(self, Marker):
             return
-
-        colocate_id = self._placement.get('explicitColocate')
-        if not colocate_id:
-            colocate_id = '__spl_' + why + '_' + str(self.index)
-            self._placement['explicitColocate'] = colocate_id
-            self._remap_colocate_tag(colocate_id, colocate_id)
-
+        colocate_tag = '__spl_' + why + '$' + str(self.index)
+        self._colocate_tag(colocate_tag)
         for op in others:
-            tag = op._placement.get('explicitColocate')
-            if tag:
-                if tag != colocate_id:
-                    self._remap_colocate_tag(colocate_id, tag)
-            else:
-                op._placement['explicitColocate'] = colocate_id
+            op._colocate_tag(colocate_tag)
+
+    def _colocate_tag(self, colocate_tag):
+        if 'colocateTags' not in self._placement:
+            self._placement['colocateTags'] = []
+        self._placement['colocateTags'].append(colocate_tag)
+
+    def consistent(self, consistent_config):
+        self._consistent = consistent_config
 
     def _layout(self, kind=None, hidden=None, name=None, orig_name=None):
         if kind:
@@ -469,9 +536,14 @@ class _SPLInvocation(object):
         for port in self.outputPorts:
             print(port.name)
 
+# Input ports don't have a name in SPL but the code generation
+# keys ports by their name so we create a unique internal identifier
+# for the name.
+
 class IPort(object):
-    def __init__(self, name, operator, index, schema, window_config):
-        self.name = name
+    def __init__(self, operator, index, schema, window_config):
+        self.name = operator.graph._unique_id('$__spl_ip')
+        self._alias = None
         self.operator = operator
         self.index = index
         self.schema = schema
@@ -488,6 +560,8 @@ class IPort(object):
     def getSPLInputPort(self):
         _iport = {}
         _iport["name"] = self.name
+        if self._alias:
+            _iport['alias'] = self._alias
         _iport["connections"] = [port.name for port in self.outputPorts]
         _iport["type"] = self.schema.schema()
         if self.window_config is not None:
@@ -535,6 +609,7 @@ class Marker(_SPLInvocation):
     def __init__(self, index, kind, name, params, graph):
         self.index = index
         self.kind = kind
+        self.model = 'virtual'
         self.name = name
         self.params = {}
         self.setParameters(params)
@@ -552,7 +627,7 @@ class Marker(_SPLInvocation):
         _op["partitioned"] = False
 
         _op["marker"] = True
-        _op["model"] = "virtual"
+        _op["model"] = self.model
         _op["language"] = "marker"
 
         _outputs = []

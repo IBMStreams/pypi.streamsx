@@ -124,23 +124,15 @@ def _get_topology_app(cmd_args):
     return app
 
 def _get_spl_app(cmd_args):
-    if '::' in cmd_args.main_composite:
-        ns, name = cmd_args.main_composite.rsplit('::', 1)
-        ns += '._spl'
-    else:
-        raise ValueError('--main-composite requires a namespace qualified name: ' + str(cmd_args.main_composite))
-    topo = Topology(name=name, namespace=ns)
-    if cmd_args.toolkits is not None:
+    topo = op.main_composite(kind=cmd_args.main_composite,
+        toolkits=cmd_args.toolkits)[0]
+    if cmd_args.create_bundle:
+        # Mimic what the build service does by indexing
+        # any required toolkits including Python operator extraction
+        # but only if we can write to it.
         for tk_path in cmd_args.toolkits:
-            tk.add_toolkit(topo, tk_path)
-            if cmd_args.create_bundle:
-                # Mimic what the build service does by indexing
-                # any required toolkits including Python operator extraction
-                # but only if we can write to it.
-                if os.access(tk_path, os.W_OK):
-                    streamsx.scripts.extract.main(['-i', tk_path, '--make-toolkit'])
-
-    op.Invoke(topo, cmd_args.main_composite)
+            if os.access(tk_path, os.W_OK):
+                streamsx.scripts.extract.main(['-i', tk_path, '--make-toolkit'])
     return _App(topo, {})
 
 def _get_bundle(cmd_args):
@@ -159,7 +151,6 @@ def _submit_topology(cmd_args, app):
     cfg = app.cfg
     if cmd_args.create_bundle:
         ctxtype = ctx.ContextTypes.BUNDLE
-        cfg['topology.keepArtifacts'] = True
     elif cmd_args.service_name:
         cfg[ctx.ConfigParams.FORCE_REMOTE_BUILD] = True
         cfg[ctx.ConfigParams.SERVICE_NAME] = cmd_args.service_name

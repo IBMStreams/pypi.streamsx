@@ -6,10 +6,19 @@ using namespace streamsx::topology;
 
 <%SPL::CodeGen::headerPrologue($model);%>
 
-@include "../pyspltuple.cgt"
+@include "../../opt/python/codegen/py_disallow_cr_trigger.cgt"
 
+<%
+# Configure Windowing
+ my $inputPort = $model->getInputPortAt(0); 
+ my $window = $inputPort->getWindow();
+ my $windowCppType = SPL::CodeGen::getWindowCppType($window,"PyObject *");
+%>
+
+@include "../pyspltuple.cgt"
 class MY_OPERATOR : public MY_BASE_OPERATOR,
-      public WindowEvent<PyObject *>
+      public WindowEvent<PyObject *>,
+      public DelegatingStateHandler
 {
 public:
   // Constructor
@@ -23,14 +32,26 @@ public:
 
   // Tuple processing for non-mutating ports
   void process(Tuple const & tuple, uint32_t port);
+  void process(Punctuation const & punct, uint32_t port);
 
   // Window
   void onWindowTriggerEvent(
      Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key);
+
+  void beforeWindowFlushEvent(
+     Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key) {
+
+     onWindowTriggerEvent(window, key);
+  }
   
 void afterTupleEvictionEvent(
      Window<PyObject *> & window,  Window<PyObject *>::TupleType & tuple,
      Window<PyObject *>::PartitionType const & partition);
+
+protected:
+  virtual void checkpointExtra(SPL::Checkpoint & ckpt);
+  virtual void resetExtra(SPL::Checkpoint & ckpt);
+  virtual void resetToInitialStateExtra();
 
 private:
     SplpyOp * op() { return funcop_; }
@@ -49,9 +70,10 @@ private:
     int32_t occ_;
 
     // Window definition
-    SlidingWindow<PyObject *>  window_;	       
+    <%=$windowCppType%>  window_;	       
 
+    @include "../../opt/python/codegen/py_enable_cr.cgt"
+    OptionalConsistentRegionContext crContext;
 }; 
 
 <%SPL::CodeGen::headerEpilogue($model);%>
-

@@ -24,8 +24,6 @@
 #include "splpy_ec_api.h"
 #include "splpy_general.h"
 
-#if __SPLPY_EC_MODULE_OK
-
 #include <SPL/Runtime/ProcessingElement/ProcessingElement.h>
 #include <SPL/Runtime/Operator/OperatorMetrics.h>
 #include <SPL/Runtime/Common/Metric.h>
@@ -267,9 +265,22 @@ static PyObject * __splpy_ec_create_custom_metric(PyObject *self, PyObject *args
 
    Py_BEGIN_ALLOW_THREADS
 
-   SPL::Metric &cm = metrics.createCustomMetric(name, desc, kind);
-   cm.setValue(value);
-   cmptr = reinterpret_cast<void *>(&cm);
+   // If the metric already exists with the same name
+   // and kind then return that. Do not set the value
+   // as the create custom metric is the initial value.
+   if (metrics.hasCustomMetric(name)) {
+       SPL::Metric &cm = metrics.getCustomMetricByName(name);
+       if (cm.getKind() == kind)
+           cmptr = reinterpret_cast<void *>(&cm);
+
+       // Otherwise let SPL runtime handle the duplicate
+   }
+
+   if (cmptr == NULL) {
+       SPL::Metric &cm = metrics.createCustomMetric(name, desc, kind);
+       cm.setValue(value);
+       cmptr = reinterpret_cast<void *>(&cm);
+   }
 
    Py_END_ALLOW_THREADS
 
@@ -396,6 +407,5 @@ init_streamsx_ec(void)
 
 }
 
-#endif
 #endif
 

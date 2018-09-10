@@ -27,6 +27,7 @@
 #include <TopologySplpyResource.h>
 #include <SPL/Runtime/Common/RuntimeException.h>
 #include <SPL/Runtime/Type/Meta/BaseType.h>
+#include <SPL/Runtime/Type/SPLType.h>
 #include <SPL/Runtime/Function/SPLFunctions.h>
 #include <SPL/Runtime/ProcessingElement/PE.h>
 #include <SPL/Runtime/Operator/Port/OperatorPort.h>
@@ -124,16 +125,27 @@ class SplpyGeneral {
 
   public:
     /*
+     * Return true if Python object is Py_None.
      * We load Py_None indirectly to avoid
      * having a reference to it when the
      * operator shared library is loaded.
      */
     static bool isNone(PyObject *o) {
-
         static PyObject * none = o;
-
         return o == none;
     }
+ 
+    /*
+     * Return Py_None.
+     * First call is through setup to set the static variable.
+     * Subsequent calls pass null and receive the value.
+     */
+    static PyObject * getNone(PyObject *o) {
+        static PyObject * none = o;
+        Py_INCREF(none);
+        return none;
+    }
+
     /**
       PyMemoryView_Check macro gets reassigned to
       this function. This is because using it directly
@@ -187,7 +199,38 @@ class SplpyGeneral {
       return ret;
     }
 
-    
+    /**
+     * Utility method to write a python exception to the application trace.
+     * The type and value are written, but not the traceback.
+     * If no python exception occurred, this does nothing.
+     * The caller must hold the GILState.
+     * The full error and trace is also printed to stderr.
+     */
+    static void tracePythonError() {
+      if (PyErr_Occurred()) {
+        PyObject * type = NULL;
+        PyObject * value = NULL;
+        PyObject * traceback = NULL;
+
+        PyErr_Fetch(&type, &value, &traceback);
+        if (value) {
+          SPL::rstring valueString;
+          SPL::rstring typeString;
+          // note pyRStringFromPyObject returns zero on success
+          if (!pyRStringFromPyObject(typeString, type)) {
+            if (value) {
+              pyRStringFromPyObject(valueString, value);
+            }
+            SPLAPPTRC(L_ERROR, "A Python error occurred: " << typeString << ": " << valueString, "python");
+
+          }
+        }
+
+        // Print the error and trace to system.out
+        PyErr_Restore(type, value, traceback);
+        SplpyGeneral::flush_PyErrPyOut();
+      }
+    }
 
     /**
      * Class object for streamsx.spl.types.Timestamp.
@@ -318,7 +361,7 @@ class SplpyGeneral {
          msg << "Fatal error: function " << fn << " in module " << mn << " not callable.";
          throw SplpyGeneral::generalException("setup", msg.str());
         }
-        SPLAPPTRC(L_INFO, "Callable function: " << fn, "python");
+        SPLAPPTRC(L_DEBUG, "Callable function: " << fn, "python");
         return function;
       }
     static PyObject * loadFunctionGIL(const std::string & mn, const std::string & fn)
@@ -340,7 +383,7 @@ class SplpyGeneral {
         SPLAPPLOG(L_ERROR, TOPOLOGY_IMPORT_MODULE_ERROR(mn), "python");
         throw SplpyGeneral::pythonException(mn);
       }
-      SPLAPPLOG(L_INFO, TOPOLOGY_IMPORT_MODULE(mn), "python");
+      SPLAPPLOG(L_DEBUG, TOPOLOGY_IMPORT_MODULE(mn), "python");
       return module;
     }
 
@@ -360,12 +403,15 @@ class SplpyGeneral {
         if (arg2)
             PyTuple_SET_ITEM(funcArg, 1, arg2);
         PyObject *ret = PyObject_CallObject(function, funcArg);
-        Py_DECREF(funcArg);
-        Py_DECREF(function);
         if (ret == NULL) {
+            tracePythonError();
+            Py_DECREF(funcArg);
+            Py_DECREF(function);
             SPLAPPTRC(L_ERROR, "Failed function execution " << mn << "." << fn, "python");
             throw SplpyGeneral::pythonException(mn+"."+fn);
         }
+        Py_DECREF(funcArg);
+        Py_DECREF(function);
         SPLAPPTRC(L_DEBUG, "Executed function " << mn << "." << fn , "python");
         return ret;
     }
@@ -383,14 +429,14 @@ class SplpyGeneral {
  * it into __exit__.
  */
 class SplpyExceptionInfo {
-    public:
-      SplpyExceptionInfo() {
+    private:
+      SplpyExceptionInfo() : et_(), location_() {
          PyErr_Fetch(&pyType_, &pyValue_, &pyTraceback_);
          PyErr_NormalizeException(&pyType_, &pyValue_, &pyTraceback_);
-         // At this point we hold refrences to the objects
+         // At this point we hold references to the objects
          // and the error indicator is cleared.
       }
-
+    public:
       /*
        * Returns a SplpyExceptionInfo instance that can be thrown
        * when a Python error is raised through the Python C-API,
@@ -418,7 +464,7 @@ class SplpyExceptionInfo {
       }
 
       PyObject * asTuple() const {
-          PyObject *info = PyTuple_New(pyValue_ ? (pyTraceback_ ? 3 : 2) : 1);
+          PyObject *info = PyTuple_New(pyTraceback_ ? 3 : pyValue_ ? 2 : 1);
           Py_INCREF(pyType_);
           PyTuple_SET_ITEM(info, 0, pyType_);
           if (pyValue_) {
@@ -777,6 +823,20 @@ class SplpyExceptionInfo {
            pySplValueFromPyObject(sv, v);
         }
     }
+ 
+#ifdef SPL_RUNTIME_TYPE_OPTIONAL_H 
+    // SPL optional tyoe from Python optional tyoe
+    template <typename T>
+    inline void pySplValueFromPyObject(SPL::optional<T> & s, PyObject *value) {
+        if (SplpyGeneral::isNone(value)) {
+            s.clear();
+            return;
+        }
+        T v;
+        pySplValueFromPyObject(v, value);
+        s = v;
+    }
+#endif
 
     /**************************************************************/
 
@@ -982,6 +1042,16 @@ class SplpyExceptionInfo {
         }
         return pySet;
     }
+ 
+#ifdef SPL_RUNTIME_TYPE_OPTIONAL_H 
+    // SPL optional type to Python object for an optional type
+    template <typename T>
+    inline PyObject * pySplValueToPyObject(const SPL::optional<T> & o) {
+        if (o.isPresent())
+             return pySplValueToPyObject(o.value());
+        return SplpyGeneral::getNone(NULL);
+    }
+#endif
 
 /*
  * A MemoryView from a blob attribute in an SPL schema

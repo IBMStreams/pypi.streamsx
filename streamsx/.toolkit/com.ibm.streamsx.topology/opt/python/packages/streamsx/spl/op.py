@@ -1,6 +1,6 @@
 # coding=utf-8
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2016,2017
+# Copyright IBM Corp. 2016,2018
 """
 Integration of SPL operators.
 
@@ -56,12 +56,15 @@ or an arbitrary SPL expression (passed as a string or an :py:class:`Expression`)
 Because a string is interpreted as an SPL expression, a string constant
 should be passed by enclosing the quoted string in outer quotes (for example, '"a string constant"').
 
-SPL is strictly typed so when passing a constant as a parameter value the
+SPL is strictly typed so when passing a constant as a value the
 value may need to be strongly typed.
 
     * ``bool``, ``int``, ``float`` and ``str`` values map automatically to SPL `boolean`, `int32`, `float64` and `rstring` respectively.
     * ``Enum`` values map to an operator custom literal using the symbolic name of the value. For custom literals only the symbolic name needs to match a value expected by the operator, the class name and other values are arbitrary.
     * The module :py:mod:`streamsx.spl.types` provides functions to create typed SPL expressions from values.
+
+An optional type may be set to SPL `null` by passing either Python `None` or
+the value returned from :py:func:`~streamsx.spl.types.null`.
 
 Param clause
 ------------
@@ -116,7 +119,7 @@ When a tuple is submitted by an operator invocation each of its attributes is
 set in one of three ways:
 
     * By the operator based upon its state and input tuples. For example, a US ZIP code operator might set the `zipcode` attribute based upon its lookup of the ZIP code from the address details in the input tuple.
-    * By the operator implicitly setting output attributes from matching input attributes. Many streaming operators implicitly set output attributes to allow attributes to flow through the operator without any explicit coding. This only occurs when an output attribute is not explicitly set by the operator or the output clause and the input tuple has an attribute that matches the name and type of the output attribute. For example in the US ZIP code operator if the output tuple included attributes of ``rstring city, rstring state`` matching input attributes then they would be implicitly copied from input tuple to output tuple.
+    * By the operator implicitly setting output attributes from matching input attributes when those attributes have not been explicitly set elsewhere. Many streaming operators implicitly set output attributes to allow attributes to flow through the operator without any explicit coding. This only occurs when an output attribute is not explicitly set by the operator, or the output clause, and the input tuple has an attribute that matches the output attribute (same name and type, or same name and same type as the underlying type of an output attribute with an optional type). For example, in the US ZIP code operator, if the output tuple included attributes of ``rstring city, rstring state`` that matched input attributes, then they would be implicitly copied from the input tuple to the output tuple.
     * By an output clause in the operator invocation. In this case the application invoking the operator is explicitly setting attributes using SPL expressions. An operator may provide output functions that return values based upon the operator's state and input tuples. For example, the US ZIP code operator might provide a ``ZIPCode()`` output function rather than explicitly setting an output attribute. Then the application is free to use any attribute name to represent the ZIP code in its output tuple.
 
 In Python an output tuple attribute is set by creating an attribute in the operator invocation instance that is set to a return from the `output` method.
@@ -146,8 +149,10 @@ For example, invoking an SPL `Beacon` operator using an output function to set t
 
 from future.builtins import *
 
+import streamsx.spl.toolkit
 import streamsx.topology.exop as exop
 import streamsx.topology.runtime
+import streamsx.topology.topology
 import streamsx._streams._placement as _placement
 
 class Invoke(_placement._Placement, exop.ExtensionOperator):
@@ -192,6 +197,8 @@ class Invoke(_placement._Placement, exop.ExtensionOperator):
         name = topology.graph._requested_name(name, action)
         super(Invoke,self).__init__(topology,kind,inputs,schemas,params,name)
         self._op()._ex_op = self
+        self._op().model = 'spl'
+        self._op().language = 'spl'
 
     def attribute(self, stream, name):
         """Expression for an input attribute.
@@ -259,6 +266,8 @@ class Invoke(_placement._Placement, exop.ExtensionOperator):
                     port['assigns'] = assigns
 
                 assigns[attr] = e.spl_json()
+
+
 
 class Source(Invoke):
     """
@@ -422,3 +431,42 @@ class Expression(object):
 
     def __str__(self):
         return str(self._value)
+
+def main_composite(kind, toolkits=None, name=None):
+    """Wrap a main composite invocation as a `Topology`.
+  
+    Provides a bridge between an SPL application (main composite)
+    and a `Topology`. Create a `Topology` that contains just
+    the invocation of the main composite defined by `kind`.
+
+    The returned `Topology` may be used like any other topology
+    instance including job configuration, tester or even addition
+    of SPL operator invocations or functional transformations.
+
+    .. note:: Since a main composite by definition has no input
+        or output ports any functionality added to the topology cannot
+        interact directly with its invocation.
+
+    Args:
+        kind(str): Kind of the main composite operator invocation.
+        toolkits(list[str]): Optional list of toolkits the main composite depends on.
+        name(str): Invocation name for the main composite.
+
+    Returns:
+        tuple: tuple containing:
+
+        - **Topology**: Topology with main composite invocation.
+        - **Invoke**: Invocation of the main composite
+
+    .. versionadded: 1.11
+    """
+    if '::' in kind:
+        ns, name = kind.rsplit('::', 1)
+        ns += '._spl'
+    else:
+        raise ValueError('Main composite requires a namespace qualified name: ' + str(kind))
+    topo = streamsx.topology.topology.Topology(name=name, namespace=ns)
+    if toolkits:
+        for tk_path in toolkits:
+            streamsx.spl.toolkit.add_toolkit(topo, tk_path)
+    return topo, Invoke(topo, kind, name=name)

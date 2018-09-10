@@ -31,13 +31,15 @@ sub main::generate($$) {
    
     require $pydir."/codegen/splpy.pm";
    
+    # Initialize splpy.pm
+    splpyInit($model);
+   
     # Currently function operators only have a single input port
     # and take all the input attributes
     my $iport = $model->getInputPortAt(0);
     my $inputAttrs2Py = $iport->getNumberOfAttributes();
    
     # determine which input tuple style is being used
-   
     my $pystyle = $model->getParameterByName("pyStyle");
     if ($pystyle) {
         $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
@@ -110,6 +112,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
+   print '    OptionalAutoLock stateLock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
@@ -214,6 +217,7 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
+   print '  OptionalAutoLock stateLock(this);', "\n";
    print '  streamsx::topology::Splpy::pyTupleForEach(funcop_->callable(), value);', "\n";
    print '} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
    print '  SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";

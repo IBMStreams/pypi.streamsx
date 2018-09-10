@@ -23,7 +23,8 @@ sub main::generate($$) {
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '    funcop_(NULL),', "\n";
-   print '    occ_(-1)', "\n";
+   print '    occ_(-1),', "\n";
+   print '    crContext(this)', "\n";
    print '{', "\n";
    print '    const char * wrapfn = "';
    print $pywrapfunc;
@@ -68,6 +69,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
+   print '    OptionalAutoLock lock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
@@ -78,9 +80,10 @@ sub main::generate($$) {
    print "\n";
    print '  while(!getPE().getShutdownRequested()) {', "\n";
    print '   try {', "\n";
-   print '    ', "\n";
    print '    OPort0Type otuple;', "\n";
    print "\n";
+   print '    AutoConsistentRegionPermit crp(crContext);', "\n";
+   print '    OptionalAutoLock stateLock(this);', "\n";
    print '    { // start lock', "\n";
    print '      SplpyGIL lock;', "\n";
    print '      if (pyReturnVar != NULL) {', "\n";
@@ -120,6 +123,7 @@ sub main::generate($$) {
    print '    } // end lock', "\n";
    print "\n";
    print '    submit(otuple, 0);', "\n";
+   print "\n";
    print '   } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
    print '     SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
    print '   }', "\n";

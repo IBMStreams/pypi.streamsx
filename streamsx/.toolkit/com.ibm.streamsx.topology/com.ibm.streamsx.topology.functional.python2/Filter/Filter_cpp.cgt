@@ -16,7 +16,8 @@ using namespace streamsx::topology;
 // Constructor
 MY_OPERATOR::MY_OPERATOR() :
    funcop_(NULL),
-   pyInStyleObj_(NULL)
+   pyInStyleObj_(NULL),
+   crContext(this)
 {
     funcop_ = new SplpyFuncOp(this, "<%=$pywrapfunc%>");
 
@@ -37,6 +38,7 @@ MY_OPERATOR::~MY_OPERATOR()
 // Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
+    OptionalAutoLock stateLock(this);
     funcop_->prepareToShutdown();
 }
 
@@ -46,6 +48,7 @@ void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 try {
 @include "../pyspltuple2value.cgt"
 
+  OptionalAutoLock stateLock(this);
   if (streamsx::topology::Splpy::pyTupleFilter(funcop_->callable(), value)) {
       submit(tuple, 0);
   }
@@ -56,6 +59,7 @@ try {
 
 void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
 {
+   OptionalAutoLock stateLock(this);
    forwardWindowPunctuation(punct);
 }
 

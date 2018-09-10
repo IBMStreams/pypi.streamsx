@@ -1,8 +1,9 @@
-# SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
-# SPL_CGT_INCLUDE: ../pyspltuple.cgt
-# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
-# SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2tuple.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple_constructor.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
 package Aggregate_cpp;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
@@ -30,13 +31,15 @@ sub main::generate($$) {
    
     require $pydir."/codegen/splpy.pm";
    
+    # Initialize splpy.pm
+    splpyInit($model);
+   
     # Currently function operators only have a single input port
     # and take all the input attributes
     my $iport = $model->getInputPortAt(0);
     my $inputAttrs2Py = $iport->getNumberOfAttributes();
    
     # determine which input tuple style is being used
-   
     my $pystyle = $model->getParameterByName("pyStyle");
     if ($pystyle) {
         $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
@@ -63,10 +66,6 @@ sub main::generate($$) {
     # Select the Python wrapper function
     my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
    
-    if (($pystyle eq 'dict') || ($pystyle eq 'tuple')) {
-       SPL::CodeGen::exitln("Dictionary input not supported.");
-    }
-    
     my $out_pywrapfunc=  'object_in__' . $pyoutstyle . '_out';
    print "\n";
    print "\n";
@@ -81,10 +80,20 @@ sub main::generate($$) {
    print '   occ_(-1),', "\n";
    print '   window_(';
    print $windowCppInitializer;
-   print ')', "\n";
+   print '),', "\n";
+   print '   crContext(this)', "\n";
    print '{', "\n";
+    if ($window->isSliding()) {
+   print "\n";
    print '    window_.registerOnWindowTriggerHandler(this);', "\n";
    print '    window_.registerAfterTupleEvictionHandler(this);', "\n";
+   }
+   print "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print '    window_.registerBeforeWindowFlushHandler(this);', "\n";
+   }
+   print "\n";
    print "\n";
    print '    const char * out_wrapfn = "';
    print $out_pywrapfunc;
@@ -115,10 +124,40 @@ sub main::generate($$) {
    print ';', "\n";
    print '    }', "\n";
        } 
+   
+       
     }
    print "\n";
    print "\n";
    print '    funcop_ = new SplpyFuncOp(this, out_wrapfn);', "\n";
+   print "\n";
+    if ($pystyle_fn eq 'dict') { 
+   print "\n";
+   print '#define pyInNames_ pyInStyleObj_', "\n";
+   print '{', "\n";
+   print '     SplpyGIL lock;', "\n";
+   print '     pyInNames_ = streamsx::topology::Splpy::pyAttributeNames(', "\n";
+   print '               getInputPortAt(0));', "\n";
+   print '}', "\n";
+    } 
+   print "\n";
+   print "\n";
+    if ($pystyle_nt) { 
+   print "\n";
+   print '#define pyNamedtupleCls_ pyInStyleObj_', "\n";
+   print '{', "\n";
+   print '     SplpyGIL lock;', "\n";
+   print '     pyNamedtupleCls_ = streamsx::topology::SplpyGeneral::callFunction(', "\n";
+   print '        "streamsx.topology.runtime", "_get_namedtuple_cls",', "\n";
+   print '       streamsx::topology::pyUnicode_FromUTF8("';
+   print $iport->getSPLTupleType();
+   print '"),', "\n";
+   print '       streamsx::topology::pyUnicode_FromUTF8("';
+   print substr($pystyle, 11);
+   print '"));', "\n";
+   print '}', "\n";
+    } 
+   print "\n";
    print '    ', "\n";
    print '    // Obtain the function that loads the tuple\'s value in process()', "\n";
    print '    {', "\n";
@@ -135,7 +174,6 @@ sub main::generate($$) {
     } 
    print "\n";
    print '    }', "\n";
-   print "\n";
    print '}', "\n";
    print "\n";
    print '// Destructor', "\n";
@@ -160,6 +198,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
+   print '    OptionalAutoLock stateLock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
@@ -263,6 +302,8 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
+   print '  OptionalAutoLock stateLock(this);', "\n";
+   print "\n";
    print '  PyObject *python_value;', "\n";
    print "\n";
    print '  // If the input style is pickle,', "\n";
@@ -311,7 +352,10 @@ sub main::generate($$) {
    print '	  PyTuple_SET_ITEM(tup, 0, python_value);', "\n";
    print '	  python_value = SplpyGeneral::pyCallObject(loads, tup);', "\n";
    print '      }', "\n";
-   print '  ', "\n";
+   print '  ';
+    } elsif ($pystyle eq 'dict' || $pystyle eq 'tuple' || $pystyle_nt) {
+   print "\n";
+   print '      python_value = value;', "\n";
    print ' ';
     } else{
    	  SPL::CodeGen::exitln($pystyle . " is an unsupported input type.");      
@@ -321,6 +365,25 @@ sub main::generate($$) {
    print "\n";
    print "\n";
    print '  window_.insert(python_value);', "\n";
+   print '}', "\n";
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
+   print '{', "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print '   SPLAPPTRC(L_DEBUG, "Acquire state lock if needed", SPL_OPER_DBG);', "\n";
+   print '    OptionalAutoLock stateLock(this);', "\n";
+   print "\n";
+   print '   // Aggregate the remaining contents if there are some.', "\n";
+   print '   if (punct == Punctuation::FinalMarker) {', "\n";
+   print '       SPL::AutoWindowDataAcquirer<PyObject *> awd(window_);', "\n";
+   print '       Window<PyObject *>::StorageType & storage = window_.getWindowStorage();', "\n";
+   print '       Window<PyObject *>::DataType & content = storage[0];', "\n";
+   print '       if (content.size() > 0)', "\n";
+   print '            onWindowTriggerEvent(window_, 0);', "\n";
+   print '   }', "\n";
+   }
+   print "\n";
    print '}', "\n";
    print "\n";
    print "\n";
@@ -343,7 +406,7 @@ sub main::generate($$) {
    print '    PyObject *items;', "\n";
    print '    {', "\n";
    print '    SplpyGIL lock;', "\n";
-   print '    items = PyList_New(std::distance(content.begin(), content.end()));', "\n";
+   print '    items = PyList_New(content.size());', "\n";
    print '    unsigned int idx = 0;', "\n";
    print '    for(WindowType::DataType::iterator it=content.begin(); it!=content.end(); ++it) {', "\n";
    print '        PyObject *item = *it;', "\n";
@@ -354,55 +417,47 @@ sub main::generate($$) {
    print '	++idx;', "\n";
    print '    }', "\n";
    print '    }', "\n";
-   print '    PyObject *value = items;', "\n";
    print '  OPort0Type otuple;', "\n";
    print "\n";
-   print '  try {', "\n";
+   print '  {', "\n";
+   print '    try {', "\n";
    print '  ', "\n";
-   print '  if (SPLPY_AGGREGATE(funcop_->callable(), value,', "\n";
-   print '       otuple.get_';
+   print '      if (SPLPY_AGGREGATE(funcop_->callable(), items,', "\n";
+   print '        otuple.get_';
    print $model->getOutputPortAt(0)->getAttributeAt(0)->getName();
    print '(), occ_)){  ', "\n";
-   print '     submit(otuple, 0);', "\n";
+   print '        submit(otuple, 0);', "\n";
+   print '      }  ', "\n";
+   print '    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '      SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '      return;', "\n";
+   print '    }', "\n";
+   print '    submit(Punctuation::WindowMarker, 0);', "\n";
    print '  }', "\n";
-   print '  } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
-   print '     SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
-   print '  }', "\n";
-   print '  submit(Punctuation::WindowMarker, 0);', "\n";
    print '}', "\n";
    print "\n";
    print '// ##################################', "\n";
    print '// End Window Event Handler Overrides', "\n";
    print '// ##################################', "\n";
    print "\n";
-   print "\n";
-   print 'namespace SPL{', "\n";
-   print '    Checkpoint & operator <<(Checkpoint &ostr, const PyObject  & obj){', "\n";
-   print '        return ostr;', "\n";
-   print '    }', "\n";
-   print "\n";
-   print '    Checkpoint & operator >>(Checkpoint &ostr, const PyObject  & obj){', "\n";
-   print '        return ostr;', "\n";
-   print '    }', "\n";
-   print "\n";
-   print '    ByteBuffer<Checkpoint> & operator<<(ByteBuffer<Checkpoint> & ckpt, PyObject * obj){', "\n";
-   print '        return ckpt;', "\n";
-   print '    }', "\n";
-   print "\n";
-   print "\n";
-   print '    ByteBuffer<Checkpoint> & operator>>(ByteBuffer<Checkpoint> & ckpt, PyObject * obj){', "\n";
-   print '        return ckpt;', "\n";
-   print '    }', "\n";
-   print "\n";
-   print ' }', "\n";
-   print "\n";
-   print 'std::ostream & operator <<(std::ostream &ostr, const PyObject  & obj){', "\n";
-   print '    return ostr;', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::checkpointExtra(SPL::Checkpoint & ckpt) {', "\n";
+   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: enter", SPL_OPER_DBG);', "\n";
+   print '    window_.checkpoint(ckpt);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: exit", SPL_OPER_DBG);', "\n";
    print '}', "\n";
    print "\n";
-   print 'std::ostream & operator >>(std::ostream &ostr, const PyObject  & obj){', "\n";
-   print '    return ostr;', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetExtra(SPL::Checkpoint & ckpt) {', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetExtra", SPL_OPER_DBG);', "\n";
+   print '    window_.reset(ckpt);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetExtra: exit", SPL_OPER_DBG);', "\n";
    print '}', "\n";
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetToInitialStateExtra() {', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: enter", SPL_OPER_DBG);', "\n";
+   print '    window_.resetToInitialState();', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: exit", SPL_OPER_DBG);', "\n";
+   print '}', "\n";
+   print "\n";
    SPL::CodeGen::implementationEpilogue($model);
    print "\n";
    CORE::exit $SPL::CodeGen::USER_ERROR if ($SPL::CodeGen::sawError);

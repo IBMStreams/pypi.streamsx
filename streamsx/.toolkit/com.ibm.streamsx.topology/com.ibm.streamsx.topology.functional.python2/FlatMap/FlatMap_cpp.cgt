@@ -23,7 +23,8 @@ using namespace streamsx::topology;
 MY_OPERATOR::MY_OPERATOR() :
    funcop_(NULL),
    pyInStyleObj_(NULL),
-   occ_(-1)
+   occ_(-1),
+   crContext(this)
 { 
     const char * wrapfn = "<%=$pywrapfunc%>";
 
@@ -77,6 +78,7 @@ MY_OPERATOR::~MY_OPERATOR()
 // Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
+    OptionalAutoLock stateLock(this);
     funcop_->prepareToShutdown();
 }
 
@@ -87,6 +89,7 @@ void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
   
   std::vector<OPort0Type> output_tuples; 
   
+  OptionalAutoLock stateLock(this);
   try {
     SplpyGIL lock;
 
@@ -120,16 +123,15 @@ void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
     SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
   }
 
-  
   // submit tuples
   for(int i = 0; i < output_tuples.size() && !getPE().getShutdownRequested(); i++) {
     submit(output_tuples[i], 0);
   } 
-  
 }
 
 void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
 {
+   OptionalAutoLock lock(this);
    forwardWindowPunctuation(punct);
 }
 

@@ -31,13 +31,15 @@ sub main::generate($$) {
    
     require $pydir."/codegen/splpy.pm";
    
+    # Initialize splpy.pm
+    splpyInit($model);
+   
     # Currently function operators only have a single input port
     # and take all the input attributes
     my $iport = $model->getInputPortAt(0);
     my $inputAttrs2Py = $iport->getNumberOfAttributes();
    
     # determine which input tuple style is being used
-   
     my $pystyle = $model->getParameterByName("pyStyle");
     if ($pystyle) {
         $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
@@ -61,7 +63,8 @@ sub main::generate($$) {
    print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
-   print '   pyInStyleObj_(NULL)', "\n";
+   print '   pyInStyleObj_(NULL),', "\n";
+   print '   crContext(this)', "\n";
    print '{', "\n";
    print '    funcop_ = new SplpyFuncOp(this, "';
    print $pywrapfunc;
@@ -111,6 +114,7 @@ sub main::generate($$) {
    print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
+   print '    OptionalAutoLock lock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
@@ -215,6 +219,7 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
+   print '  OptionalAutoLock stateLock(this);', "\n";
    if ($pystyle_fn eq 'dict' || $pystyle_fn eq 'tuple') {
    print "\n";
    print "\n";
@@ -242,6 +247,7 @@ sub main::generate($$) {
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
    print '{', "\n";
+   print '   OptionalAutoLock stateLock(this);', "\n";
    print '   forwardWindowPunctuation(punct);', "\n";
    print '}', "\n";
    print "\n";

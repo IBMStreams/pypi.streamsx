@@ -95,14 +95,20 @@ class SplpySetup {
         PyObject * none =
                 ((__splpy_bv) dlsym(pydl, "Py_BuildValue"))("");
         
-        // Call the isNone passing in none which will
+        // Call isNone() and getNone() passing in none which will
         // be the first caller (as this is in setup)
         // and thus set the local pointer to None (effectively Py_None).
         bool in = SplpyGeneral::isNone(none);
         if (!in) {
           throw SplpyGeneral::generalException("setup",
-                        "Internal error - None handling");
+                        "Internal error - None handling: isNone");
         }
+        PyObject * ret = SplpyGeneral::getNone(none);
+        if (ret != none) {
+          throw SplpyGeneral::generalException("setup",
+                        "Internal error - None handling: getNone");
+        }
+        Py_DECREF(ret);
     }
 
     /*
@@ -168,13 +174,13 @@ class SplpySetup {
  
 #if PY_MAJOR_VERSION == 3
         // When SPL compile is optimized disable Python
-        // assertions, equivalent to -OO
+        // assertions, equivalent to -O
         // Seems to cause module loading issues from pyc files
         // on Python 2.7 so only optmize on Python 3
         if (SPL::ProcessingElement::pe().isOptimized()) {
            if (getenv("PYTHONOPTIMIZE") == NULL) {
-               SPLAPPTRC(L_DEBUG, "Setting optimized Python runtime (-OO)", "python");
-               setenv("PYTHONOPTIMIZE", "2", 1);
+               SPLAPPTRC(L_DEBUG, "Setting optimized Python runtime (-O)", "python");
+               setenv("PYTHONOPTIMIZE", "1", 1);
           }
         }
 #endif
@@ -222,7 +228,6 @@ class SplpySetup {
           typedef PyThreadState * (*__splpy_est)(void);
 
 
-#if __SPLPY_EC_MODULE_OK
 {
 
 #if PY_MAJOR_VERSION == 3
@@ -234,7 +239,6 @@ class SplpySetup {
           _SPLPyImport_AppendInittab(__SPLPY_EC_MODULE_NAME, &init_streamsx_ec);
 #endif
 }
-#endif
 
           SPLAPPTRC(L_DEBUG, "Starting Python runtime", "python");
 
@@ -259,11 +263,9 @@ class SplpySetup {
           const char *argv[] = {""};
           _SPLPySys_SetArgvEx(1, (char **) argv, 0);
 #endif
-#if __SPLPY_EC_MODULE_OK
 #if PY_MAJOR_VERSION == 2
           SPLAPPTRC(L_DEBUG, "Including Python extension: _streamsx_ec", "python");
           init_streamsx_ec();
-#endif
 #endif
          
           _SPLPyEval_InitThreads();
@@ -302,9 +304,7 @@ class SplpySetup {
         }
         SPLAPPTRC(L_DEBUG, "Python script splpy_setup.py ran ok.", "python");
 
-#if __SPLPY_EC_MODULE_OK
         SplpyGeneral::callVoidFunction("streamsx.ec", "_setup", NULL, NULL);
-#endif
     }
 };
 

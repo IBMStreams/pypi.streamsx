@@ -63,6 +63,7 @@ class Timestamp(streamsx.spl.runtime._Timestamp):
     def from_datetime(dt, machine_id=0):
         """
         Convert a datetime to an SPL `Timestamp`.
+        
         Args:
            dt(datetime.datetime): Datetime to be converted.
            machine_id(int): Machine identifier.
@@ -265,3 +266,13 @@ def rstring(value):
     """
     return streamsx.spl.op.Expression('RSTRING', str(value))
 
+def null():
+    """
+    Return an SPL ``null``.
+
+    Returns:
+        Expression: Expression representing an SPL null value.
+
+    .. versionadded:: 1.10
+    """
+    return streamsx.spl.op.Expression.expression("null")
