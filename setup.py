@@ -3,7 +3,7 @@ setup(
   name = 'streamsx',
   packages = ['streamsx', 'streamsx.spl', 'streamsx.topology', 'streamsx.scripts', 'streamsx._streams'],
   include_package_data=True,
-  version = '1.9.8',
+  version = '1.9.8.post1',
   description = 'IBM Streams Python Support',
   long_description = open('DESC.txt').read(),
   author = 'IBM Streams @ github.com',
@@ -13,7 +13,7 @@ setup(
   download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/1.9.8',
   keywords = ['streams', 'ibmstreams', 'streaming', 'analytics', 'streaming-analytics'],
   classifiers = [
-    'Development Status :: 3 - Alpha',
+    'Development Status :: 5 - Production/Stable',
     'License :: OSI Approved :: Apache Software License',
     'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 2.7',
