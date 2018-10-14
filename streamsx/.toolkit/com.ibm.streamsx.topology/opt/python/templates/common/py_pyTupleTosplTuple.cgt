@@ -1,8 +1,10 @@
 <%
-# Generates a function in an operator that converts a Python
-# tuple to an SPL tuple for a given port.
+# Generates functions in an operator that converts a Python
+# tuple to an SPL tuple for a given port and optional to
+# submit the tuple.
 #
 # $oport must be set on entry to required output port
+# $oport_submission must be set on entry to generate submission methods.
 # $iport can be set to automatically copy input attributes to
 # output attributes when the Python tuple does not supply a value.
 
@@ -13,11 +15,12 @@
      $itypearg = ", ituple";
   }
 %>
+
+<% if ($oport_submission) { %>
  
 // Python tuple to SPL tuple with submission to a port
-void MY_OPERATOR::fromPythonToPort<%=$oport->getIndex()%>(PyObject *pyTuple <%=$itypeparam%>) {
+void MY_OPERATOR::fromPythonToPort<%=$oport->getIndex()%>(PyObject *pyTuple, <%=$oport->getCppTupleType()%> & otuple <%=$itypeparam%>) {
 
-  <%=$oport->getCppTupleType()%> otuple;
   try {
     MY_OPERATOR::fromPyTupleToSPLTuple(pyTuple, otuple <%=$itypearg%>);
   } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
@@ -29,9 +32,7 @@ void MY_OPERATOR::fromPythonToPort<%=$oport->getIndex()%>(PyObject *pyTuple <%=$
 }
 
 // Python dict to SPL tuple with submission to a port.
-void MY_OPERATOR::fromPythonDictToPort<%=$oport->getIndex()%>(PyObject *pyDict <%=$itypeparam%>) {
-
-  <%=$oport->getCppTupleType()%> otuple;
+void MY_OPERATOR::fromPythonDictToPort<%=$oport->getIndex()%>(PyObject *pyDict, <%=$oport->getCppTupleType()%> & otuple <%=$itypeparam%>) {
 
   try {
     MY_OPERATOR::fromPyDictToSPLTuple(pyDict, otuple <%=$itypearg%>);
@@ -42,6 +43,8 @@ void MY_OPERATOR::fromPythonDictToPort<%=$oport->getIndex()%>(PyObject *pyDict <
 
   STREAMSX_TUPLE_SUBMIT_ALLOW_THREADS(otuple, <%=$oport->getIndex()%>);
 }
+
+<%}%>
 
 <%
 # Ensure we generate function only once for each tuple type

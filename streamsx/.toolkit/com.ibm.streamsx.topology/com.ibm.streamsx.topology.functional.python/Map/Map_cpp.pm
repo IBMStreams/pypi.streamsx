@@ -14,13 +14,6 @@ sub main::generate($$) {
    my $model = SPL::Operator::Instance::OperatorInstance->new($$xml);
    unshift @INC, dirname ($model->getContext()->getOperatorDirectory()) . "/../impl/nl/include";
    $SPL::CodeGenHelper::verboseMode = $model->getContext()->isVerboseModeOn();
-   print '/* Additional includes go here */', "\n";
-   print "\n";
-   print '#include "splpy.h"', "\n";
-   print '#include "splpy_funcop.h"', "\n";
-   print "\n";
-   print 'using namespace streamsx::topology;', "\n";
-   print "\n";
    SPL::CodeGen::implementationPrologue($model);
    print "\n";
    print "\n";
@@ -66,13 +59,11 @@ sub main::generate($$) {
    print '#define SPLPY_TUPLE_MAP(f, v, r, occ) \\', "\n";
    print '    streamsx::topology::Splpy::pyTupleMap(f, v, r)', "\n";
    print "\n";
-   print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
    print '   pyInStyleObj_(NULL),', "\n";
    print '   pyOutNames_0(NULL),', "\n";
-   print '   occ_(-1),', "\n";
-   print '   crContext(this)', "\n";
+   print '   occ_(-1)', "\n";
    print '{', "\n";
    print '    const char * wrapfn = "';
    print $pywrapfunc;
@@ -108,7 +99,7 @@ sub main::generate($$) {
     }
    print "\n";
    print "\n";
-   print '    funcop_ = new SplpyFuncOp(this, wrapfn);', "\n";
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, wrapfn);', "\n";
    print "\n";
     if ($pystyle_fn eq 'dict') { 
    print "\n";
@@ -146,31 +137,36 @@ sub main::generate($$) {
    print '  }', "\n";
    }
    print "\n";
+   print "\n";
+   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '   this->getContext().registerStateHandler(*this);', "\n";
+   print '#endif', "\n";
    print '}', "\n";
    print "\n";
-   print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
    print '  {', "\n";
    print '    SplpyGIL lock;', "\n";
-   print '      Py_XDECREF(pyInStyleObj_);', "\n";
-   print '      Py_XDECREF(pyOutNames_0);', "\n";
+   print '      Py_CLEAR(pyInStyleObj_);', "\n";
+   print '      Py_CLEAR(pyOutNames_0);', "\n";
    print '  }', "\n";
    print "\n";
    print '  delete funcop_;', "\n";
    print '}', "\n";
    print "\n";
-   print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
-   print '    OptionalAutoLock stateLock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
-   print '// Tuple processing for non-mutating ports', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
-   print 'try {', "\n";
+   print '  OPort0Type otuple;', "\n";
+   print '  {', "\n";
+   print '    OptionalAutoLock stateLock(this);', "\n";
+   print '  ', "\n";
+   print '    try {', "\n";
+   print "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
    # functional operator
@@ -268,47 +264,46 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '  OptionalAutoLock stateLock(this);', "\n";
-   print "\n";
    if ($pyoutstyle eq 'dict') {
    print "\n";
-   print '  {', "\n";
-   print '  SplpyGIL lock;', "\n";
-   print '  PyObject * ret = streamsx::topology::Splpy::pyTupleMap(funcop_->callable(), value);', "\n";
-   print '  if (ret == NULL)', "\n";
-   print '     return;', "\n";
-   print '  if (PyTuple_Check(ret)) {', "\n";
-   print '      fromPythonToPort0(ret);', "\n";
-   print '      Py_DECREF(ret);', "\n";
-   print '  } else if (PyDict_Check(ret)) {', "\n";
-   print '      fromPythonDictToPort0(ret);', "\n";
-   print '      Py_DECREF(ret);', "\n";
-   print '  } else {', "\n";
-   print '          throw SplpyGeneral::generalException("submit",', "\n";
-   print '             "Fatal error: Value submitted must be a Python tuple or dict.");', "\n";
-   print '  }', "\n";
-   print '  }', "\n";
+   print '       {', "\n";
+   print '           SplpyGIL lock;', "\n";
+   print '           PyObject * ret = streamsx::topology::Splpy::pyTupleMap(funcop_->callable(), value);', "\n";
+   print '           if (ret == NULL)', "\n";
+   print '             return;', "\n";
+   print '           if (PyTuple_Check(ret)) {', "\n";
+   print '               fromPyTupleToSPLTuple(ret, otuple);', "\n";
+   print '               Py_DECREF(ret);', "\n";
+   print '           } else if (PyDict_Check(ret)) {', "\n";
+   print '               fromPyDictToSPLTuple(ret, otuple);', "\n";
+   print '               Py_DECREF(ret);', "\n";
+   print '           } else {', "\n";
+   print '              throw SplpyGeneral::generalException("submit",', "\n";
+   print '                "Fatal error: Value submitted must be a Python tuple or dict.");', "\n";
+   print '           }', "\n";
+   print '        } // GIL', "\n";
    print '  ', "\n";
     } else { 
    print "\n";
-   print '  OPort0Type otuple;', "\n";
    print "\n";
-   print '  if (SPLPY_TUPLE_MAP(funcop_->callable(), value,', "\n";
-   print '       otuple.get_';
+   print '        if (!SPLPY_TUPLE_MAP(funcop_->callable(), value,', "\n";
+   print '             otuple.get_';
    print $model->getOutputPortAt(0)->getAttributeAt(0)->getName();
    print '(), occ_))', "\n";
-   print '     submit(otuple, 0);', "\n";
+   print '            return;', "\n";
    print "\n";
    }
    print "\n";
-   print '} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
-   print '  SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
-   print '}', "\n";
+   print '    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '       return;', "\n";
+   print '    }', "\n";
+   print '  }', "\n";
+   print '  submit(otuple, 0);', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
    print '{', "\n";
-   print '   OptionalAutoLock stateLock(this);', "\n";
    print '   forwardWindowPunctuation(punct);', "\n";
    print '}', "\n";
    print "\n";
@@ -319,16 +314,19 @@ sub main::generate($$) {
      my $iport;
    
      my $oport = $model->getOutputPortAt(0);
+     my $oport_submission = 0;
      my $otupleType = $oport->getSPLTupleType();
      my @onames = SPL::CodeGen::Type::getAttributeNames($otupleType);
      my @otypes = SPL::CodeGen::Type::getAttributeTypes($otupleType);
    
    print "\n";
    print '// Create member function that converts Python tuple to SPL tuple', "\n";
-   # Generates a function in an operator that converts a Python
-   # tuple to an SPL tuple for a given port.
+   # Generates functions in an operator that converts a Python
+   # tuple to an SPL tuple for a given port and optional to
+   # submit the tuple.
    #
    # $oport must be set on entry to required output port
+   # $oport_submission must be set on entry to generate submission methods.
    # $iport can be set to automatically copy input attributes to
    # output attributes when the Python tuple does not supply a value.
    
@@ -339,17 +337,19 @@ sub main::generate($$) {
         $itypearg = ", ituple";
      }
    print "\n";
+   print "\n";
+    if ($oport_submission) { 
+   print "\n";
    print ' ', "\n";
    print '// Python tuple to SPL tuple with submission to a port', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::fromPythonToPort';
    print $oport->getIndex();
-   print '(PyObject *pyTuple ';
+   print '(PyObject *pyTuple, ';
+   print $oport->getCppTupleType();
+   print ' & otuple ';
    print $itypeparam;
    print ') {', "\n";
    print "\n";
-   print '  ';
-   print $oport->getCppTupleType();
-   print ' otuple;', "\n";
    print '  try {', "\n";
    print '    MY_OPERATOR_SCOPE::MY_OPERATOR::fromPyTupleToSPLTuple(pyTuple, otuple ';
    print $itypearg;
@@ -367,13 +367,11 @@ sub main::generate($$) {
    print '// Python dict to SPL tuple with submission to a port.', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::fromPythonDictToPort';
    print $oport->getIndex();
-   print '(PyObject *pyDict ';
+   print '(PyObject *pyDict, ';
+   print $oport->getCppTupleType();
+   print ' & otuple ';
    print $itypeparam;
    print ') {', "\n";
-   print "\n";
-   print '  ';
-   print $oport->getCppTupleType();
-   print ' otuple;', "\n";
    print "\n";
    print '  try {', "\n";
    print '    MY_OPERATOR_SCOPE::MY_OPERATOR::fromPyDictToSPLTuple(pyDict, otuple ';
@@ -388,6 +386,9 @@ sub main::generate($$) {
    print $oport->getIndex();
    print ');', "\n";
    print '}', "\n";
+   print "\n";
+   }
+   print "\n";
    print "\n";
    # Ensure we generate function only once for each tuple type
    my $otype = $oport->getCppTupleType();

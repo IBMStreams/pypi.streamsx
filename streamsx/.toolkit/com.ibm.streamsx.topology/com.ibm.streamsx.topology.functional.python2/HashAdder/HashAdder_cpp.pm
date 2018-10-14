@@ -13,13 +13,6 @@ sub main::generate($$) {
    my $model = SPL::Operator::Instance::OperatorInstance->new($$xml);
    unshift @INC, dirname ($model->getContext()->getOperatorDirectory()) . "/../impl/nl/include";
    $SPL::CodeGenHelper::verboseMode = $model->getContext()->isVerboseModeOn();
-   print '/* Additional includes go here */', "\n";
-   print "\n";
-   print '#include "splpy.h"', "\n";
-   print '#include "splpy_funcop.h"', "\n";
-   print "\n";
-   print 'using namespace streamsx::topology;', "\n";
-   print "\n";
    SPL::CodeGen::implementationPrologue($model);
    print "\n";
    print "\n";
@@ -60,13 +53,11 @@ sub main::generate($$) {
     my $pywrapfunc= $pystyle_fn . '_in';
    print "\n";
    print "\n";
-   print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
-   print '   pyInStyleObj_(NULL),', "\n";
-   print '   crContext(this)', "\n";
+   print '   pyInStyleObj_(NULL)', "\n";
    print '{', "\n";
-   print '    funcop_ = new SplpyFuncOp(this, "';
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, "';
    print $pywrapfunc;
    print '");', "\n";
    print "\n";
@@ -97,31 +88,34 @@ sub main::generate($$) {
    print '}', "\n";
     } 
    print "\n";
+   print "\n";
+   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '   this->getContext().registerStateHandler(*this);', "\n";
+   print '#endif', "\n";
    print '}', "\n";
    print "\n";
    print "\n";
-   print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
-   print '    if (pyInStyleObj_) {', "\n";
+   print '    {', "\n";
    print '      SplpyGIL lock;', "\n";
-   print '      Py_DECREF(pyInStyleObj_);', "\n";
+   print '      Py_CLEAR(pyInStyleObj_);', "\n";
    print '    }', "\n";
    print "\n";
    print '    delete funcop_;', "\n";
    print '}', "\n";
    print "\n";
-   print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
-   print '    OptionalAutoLock lock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
-   print '// Tuple processing for non-mutating ports', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
-   print 'try {', "\n";
+   print '    SPL::int32 _hash = 0;', "\n";
+   print '    {', "\n";
+   print '        OptionalAutoLock stateLock(this);', "\n";
+   print '        try {', "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
    # functional operator
@@ -219,35 +213,22 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '  OptionalAutoLock stateLock(this);', "\n";
-   if ($pystyle_fn eq 'dict' || $pystyle_fn eq 'tuple') {
+   print '            _hash = streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value);', "\n";
    print "\n";
+   print '        } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '            SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '            return;', "\n";
+   print '        }', "\n";
+   print '    }', "\n";
    print "\n";
-   print '  OPort0Type otuple;', "\n";
-   print '  otuple.assignFrom(';
-   print $iport->getCppTupleName();
-   print ', false);', "\n";
-   print '  otuple.set___spl_hash(streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value));', "\n";
-   print "\n";
-   } else { 
-   print "\n";
-   print "\n";
-   print '  // value is the first matching attribute and an SPL:: reference', "\n";
-   print '  OPort0Type otuple(value,', "\n";
-   print '       streamsx::topology::Splpy::pyTupleHash(funcop_->callable(), value));', "\n";
-   }
-   print "\n";
-   print "\n";
-   print '  // submit tuple', "\n";
-   print '  submit(otuple, 0);', "\n";
-   print '} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
-   print '  SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
-   print '}', "\n";
+   print '    OPort0Type otuple;', "\n";
+   print '    otuple.assignFrom(tuple, false);', "\n";
+   print '    otuple.set___spl_hash(_hash);', "\n";
+   print '    submit(otuple, 0);', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
    print '{', "\n";
-   print '   OptionalAutoLock stateLock(this);', "\n";
    print '   forwardWindowPunctuation(punct);', "\n";
    print '}', "\n";
    print "\n";

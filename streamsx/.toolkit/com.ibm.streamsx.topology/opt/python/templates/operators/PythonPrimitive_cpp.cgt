@@ -1,11 +1,7 @@
 /*
  * # Licensed Materials - Property of IBM
- * # Copyright IBM Corp. 2017
+ * # Copyright IBM Corp. 2017,2018
  */
-
-#include "splpy.h"
-
-using namespace streamsx::topology;
 
 <%SPL::CodeGen::implementationPrologue($model);%>
 
@@ -25,7 +21,6 @@ using namespace streamsx::topology;
  my %cpp_tuple_types;
 %>
 
-// Constructor
 MY_OPERATOR::MY_OPERATOR() :
     pyop_(NULL)
 <%if ($model->getNumberOfInputPorts() != 0) {%>
@@ -145,28 +140,23 @@ void MY_OPERATOR::process(uint32_t idx)
    }
 }
 
-// Destructor
 MY_OPERATOR::~MY_OPERATOR() 
 {
    SplpyGIL lock;
-   delete pyop_;
-
+   {
 <%if ($model->getNumberOfInputPorts() != 0) {%>
-   if (pyinputfns_ != NULL)
-       Py_DECREF(pyinputfns_);
-   if (pyInNames_ != NULL)
-       Py_DECREF(pyInNames_);
+   Py_CLEAR(pyinputfns_);
+   Py_CLEAR(pyInNames_);
 <%  for (my $p = 1; $p < $model->getNumberOfInputPorts(); $p++) { %>
-   if (pyInNames_<%=$p%> != NULL)
-       Py_DECREF(pyInNames_<%=$p%>);
+       Py_CLEAR(pyInNames_<%=$p%>);
 <%}}%>
 <%  for (my $p = 0; $p < $model->getNumberOfOutputPorts(); $p++) { %>
-   if (pyOutNames_<%=$p%> != NULL)
-       Py_DECREF(pyOutNames_<%=$p%>);
+       Py_CLEAR(pyOutNames_<%=$p%>);
 <%}%>
+   }
+   delete pyop_;
 }
 
-// Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
     pyop_->prepareToShutdown();
@@ -226,6 +216,7 @@ for (my $p = 0; $p < $model->getNumberOfInputPorts(); $p++) {
 <%
 for (my $p = 0; $p < $model->getNumberOfOutputPorts(); $p++) {
     my $oport = $model->getOutputPortAt($p);
+    my $oport_submission = 1;
     my $iport = undef;
 %>
 @include  "../../opt/.__splpy/common/py_valueToTuples.cgt"

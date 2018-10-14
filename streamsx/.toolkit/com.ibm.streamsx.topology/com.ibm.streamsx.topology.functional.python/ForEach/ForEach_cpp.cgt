@@ -1,10 +1,3 @@
-/* Additional includes go here */
-
-#include "splpy.h"
-#include "splpy_funcop.h"
-
-using namespace streamsx::topology;
-
 <%SPL::CodeGen::implementationPrologue($model);%>
 
 @include "../pyspltuple.cgt"
@@ -13,46 +6,44 @@ using namespace streamsx::topology;
  my $pywrapfunc= $pystyle_fn . '_in';
 %>
 
-// Constructor
 MY_OPERATOR::MY_OPERATOR():
    funcop_(NULL),
    pyInStyleObj_(NULL)
 {
-    funcop_ = new SplpyFuncOp(this, "<%=$pywrapfunc%>");
+    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, "<%=$pywrapfunc%>");
 
 @include "../pyspltuple_constructor.cgt"
+
+#if SPLPY_OP_STATEFUL == 1
+   this->getContext().registerStateHandler(*this);
+#endif
 }
 
-// Destructor
 MY_OPERATOR::~MY_OPERATOR() 
 {
-  if (pyInStyleObj_) {
+  {
       SplpyGIL lock;
-      Py_DECREF(pyInStyleObj_);
+      Py_CLEAR(pyInStyleObj_);
   }
 
   delete funcop_;
 }
 
-// Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
-    OptionalAutoLock stateLock(this);
     funcop_->prepareToShutdown();
 }
 
-// Tuple processing for non-mutating ports
 void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 {
-try {
+    OptionalAutoLock stateLock(this);
+    try {
 @include "../pyspltuple2value.cgt"
 
-  OptionalAutoLock stateLock(this);
-  streamsx::topology::Splpy::pyTupleForEach(funcop_->callable(), value);
-} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
-  SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
-}
- 
+        streamsx::topology::Splpy::pyTupleForEach(funcop_->callable(), value);
+    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
+       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
+    }
 }
 
 <%SPL::CodeGen::implementationEpilogue($model);%>

@@ -1,5 +1,6 @@
-# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_disallow_cr_trigger.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_state.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_enable_cr.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_disallow_cr_trigger.cgt
 
 package Source_h;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
@@ -9,7 +10,42 @@ sub main::generate($$) {
    my $model = SPL::Operator::Instance::OperatorInstance->new($$xml);
    unshift @INC, dirname ($model->getContext()->getOperatorDirectory()) . "/../impl/nl/include";
    $SPL::CodeGenHelper::verboseMode = $model->getContext()->isVerboseModeOn();
-   print '/* Additional includes go here */', "\n";
+    my $pyStateful = 1; 
+   print "\n";
+    
+    # State handling setup for Python operators.
+    # Requires
+    #     $pyStateful is set to 0/1 if the operator's callable is not/stateful
+    #
+    # Sets CPP defines:
+    #     SPLPY_OP_STATEFUL - Set to 1 if the operator needs a state handle.
+    #     SPLPY_OP_CR - Set to 1 is the operator is in a consistent region
+    #     SPLPY_CALLABLE_STATEFUL - Set to 1 if the callable is stateful
+   
+    my $isWindowed = 0;
+    for (my $p = 0; $p < $model->getNumberOfInputPorts(); $p++) {
+      if ($model->getInputPortAt($p)->hasWindow()) {
+         $isWindowed = 1;
+         last;
+      }
+    }
+   
+    my $isInConsistentRegion = $model->getContext()->getOptionalContext("ConsistentRegion") ? 1 : 0;
+    my $ckptKind = $model->getContext()->getCheckpointingKind();
+    my $splpy_op_stateful = ($pyStateful or $isWindowed) && ($isInConsistentRegion or $ckptKind ne "none") ? 1 : 0;
+   print "\n";
+   print "\n";
+   print '#define SPLPY_OP_STATEFUL ';
+   print $splpy_op_stateful;
+   print "\n";
+   print '#define SPLPY_OP_CR ';
+   print $isInConsistentRegion;
+   print "\n";
+   print '#define SPLPY_CALLABLE_STATEFUL ';
+   print $pyStateful && $splpy_op_stateful ? 1 : 0;
+   print "\n";
+   print "\n";
+   print '#include "splpy.h"', "\n";
    print '#include "splpy_funcop.h"', "\n";
    print "\n";
    print 'using namespace streamsx::topology;', "\n";
@@ -37,22 +73,16 @@ sub main::generate($$) {
    }  
    print "\n";
    print ' ', "\n";
-   print 'class MY_OPERATOR : public MY_BASE_OPERATOR, public DelegatingStateHandler', "\n";
+   print 'class MY_OPERATOR : public MY_BASE_OPERATOR', "\n";
+   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '      ,public DelegatingStateHandler', "\n";
+   print '#endif', "\n";
    print '{', "\n";
    print 'public:', "\n";
-   print '  // Constructor', "\n";
    print '  MY_OPERATOR();', "\n";
-   print "\n";
-   print '  // Destructor', "\n";
    print '  virtual ~MY_OPERATOR(); ', "\n";
-   print "\n";
-   print '  // Notify port readiness', "\n";
    print '  void allPortsReady(); ', "\n";
-   print "\n";
-   print '  // Notify termination', "\n";
    print '  void prepareToShutdown(); ', "\n";
-   print "\n";
-   print '  // Processing for source and threaded operators   ', "\n";
    print '  void process(uint32_t idx);', "\n";
    print '    ', "\n";
    print 'private:', "\n";
@@ -79,38 +109,14 @@ sub main::generate($$) {
     # It also provides some typedefs for types to be used by the operator
     # to support checkpointing and consistent region.
    
-    my $isInConsistentRegion = $model->getContext()->getOptionalContext("ConsistentRegion");
-    my $ckptKind = $model->getContext()->getCheckpointingKind();
-    my $pyStateful = $model->getParameterByName("pyStateful");
-    my $stateful = 0;
-    if (defined($pyStateful)) {
-      $stateful = $pyStateful->getValueAt(0)->getSPLExpression() eq "true";
-    }
-    else {
-      # no pyStateful parameter.  Try calling splpy_OperatorCallable().
-      if (defined &splpy_OperatorCallable) {
-        $stateful = splpy_OperatorCallable() eq 'class'
-      }
-    }
-   
-    my $isCheckpointing = $stateful && ($isInConsistentRegion or $ckptKind ne "none");
    print "\n";
-   print '  // True if this operator is in a consistent region.', "\n";
-   print '  static const bool isInConsistentRegion = ';
-   print  $isInConsistentRegion ? "true" :" false" ;
-   print ';', "\n";
    print '  // True if operator is stateful and checkpoint is enabled, ', "\n";
    print '  // whether directly or through consistent region.', "\n";
    print '  static const bool isCheckpointing = ';
-   print $isCheckpointing ? "true" : "false" ;
+   print $splpy_op_stateful ? "true" : "false" ;
    print ';', "\n";
    print "\n";
-   print '  typedef OptionalConsistentRegionContextImpl<isInConsistentRegion> OptionalConsistentRegionContext;', "\n";
-   print '  typedef OptionalConsistentRegionContext::Permit AutoConsistentRegionPermit;', "\n";
    print '  typedef OptionalAutoLockImpl<isCheckpointing> OptionalAutoLock;', "\n";
-   print "\n";
-   print "\n";
-   print '  OptionalConsistentRegionContext crContext;', "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);

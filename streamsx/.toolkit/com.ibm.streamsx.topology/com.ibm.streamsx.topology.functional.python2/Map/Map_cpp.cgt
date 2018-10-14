@@ -1,10 +1,3 @@
-/* Additional includes go here */
-
-#include "splpy.h"
-#include "splpy_funcop.h"
-
-using namespace streamsx::topology;
-
 <%SPL::CodeGen::implementationPrologue($model);%>
 
 @include "../pyspltuple.cgt"
@@ -18,13 +11,11 @@ using namespace streamsx::topology;
 #define SPLPY_TUPLE_MAP(f, v, r, occ) \
     streamsx::topology::Splpy::pyTupleMap(f, v, r)
 
-// Constructor
 MY_OPERATOR::MY_OPERATOR() :
    funcop_(NULL),
    pyInStyleObj_(NULL),
    pyOutNames_0(NULL),
-   occ_(-1),
-   crContext(this)
+   occ_(-1)
 {
     const char * wrapfn = "<%=$pywrapfunc%>";
 
@@ -56,7 +47,7 @@ MY_OPERATOR::MY_OPERATOR() :
  }
 %>
 
-    funcop_ = new SplpyFuncOp(this, wrapfn);
+    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, wrapfn);
 
 @include "../pyspltuple_constructor.cgt"
 
@@ -66,69 +57,73 @@ MY_OPERATOR::MY_OPERATOR() :
   pyOutNames_0 = Splpy::pyAttributeNames(getOutputPortAt(0));
   }
 <%}%>
+
+#if SPLPY_OP_STATEFUL == 1
+   this->getContext().registerStateHandler(*this);
+#endif
 }
 
-// Destructor
 MY_OPERATOR::~MY_OPERATOR() 
 {
   {
     SplpyGIL lock;
-      Py_XDECREF(pyInStyleObj_);
-      Py_XDECREF(pyOutNames_0);
+      Py_CLEAR(pyInStyleObj_);
+      Py_CLEAR(pyOutNames_0);
   }
 
   delete funcop_;
 }
 
-// Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
-    OptionalAutoLock stateLock(this);
     funcop_->prepareToShutdown();
 }
 
-// Tuple processing for non-mutating ports
 void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 {
-try {
+  OPort0Type otuple;
+  {
+    OptionalAutoLock stateLock(this);
+  
+    try {
+
 @include "../pyspltuple2value.cgt"
 
-  OptionalAutoLock stateLock(this);
-
 <%if ($pyoutstyle eq 'dict') {%>
-  {
-  SplpyGIL lock;
-  PyObject * ret = streamsx::topology::Splpy::pyTupleMap(funcop_->callable(), value);
-  if (ret == NULL)
-     return;
-  if (PyTuple_Check(ret)) {
-      fromPythonToPort0(ret);
-      Py_DECREF(ret);
-  } else if (PyDict_Check(ret)) {
-      fromPythonDictToPort0(ret);
-      Py_DECREF(ret);
-  } else {
-          throw SplpyGeneral::generalException("submit",
-             "Fatal error: Value submitted must be a Python tuple or dict.");
-  }
-  }
+       {
+           SplpyGIL lock;
+           PyObject * ret = streamsx::topology::Splpy::pyTupleMap(funcop_->callable(), value);
+           if (ret == NULL)
+             return;
+           if (PyTuple_Check(ret)) {
+               fromPyTupleToSPLTuple(ret, otuple);
+               Py_DECREF(ret);
+           } else if (PyDict_Check(ret)) {
+               fromPyDictToSPLTuple(ret, otuple);
+               Py_DECREF(ret);
+           } else {
+              throw SplpyGeneral::generalException("submit",
+                "Fatal error: Value submitted must be a Python tuple or dict.");
+           }
+        } // GIL
   
 <% } else { %>
-  OPort0Type otuple;
 
-  if (SPLPY_TUPLE_MAP(funcop_->callable(), value,
-       otuple.get_<%=$model->getOutputPortAt(0)->getAttributeAt(0)->getName()%>(), occ_))
-     submit(otuple, 0);
+        if (!SPLPY_TUPLE_MAP(funcop_->callable(), value,
+             otuple.get_<%=$model->getOutputPortAt(0)->getAttributeAt(0)->getName()%>(), occ_))
+            return;
 
 <%}%>
-} catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
-  SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
-}
+    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
+       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
+       return;
+    }
+  }
+  submit(otuple, 0);
 }
 
 void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
 {
-   OptionalAutoLock stateLock(this);
    forwardWindowPunctuation(punct);
 }
 
@@ -140,6 +135,7 @@ if ($pyoutstyle eq 'dict') {
   my $iport;
 
   my $oport = $model->getOutputPortAt(0);
+  my $oport_submission = 0;
   my $otupleType = $oport->getSPLTupleType();
   my @onames = SPL::CodeGen::Type::getAttributeNames($otupleType);
   my @otypes = SPL::CodeGen::Type::getAttributeTypes($otupleType);

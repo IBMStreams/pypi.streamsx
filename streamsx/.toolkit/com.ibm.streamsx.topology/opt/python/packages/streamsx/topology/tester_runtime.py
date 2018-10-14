@@ -20,6 +20,7 @@ the runtime execution code from the test definition module
 
 """
 
+from __future__ import unicode_literals
 from future.builtins import *
 
 import streamsx.ec as ec
@@ -85,6 +86,8 @@ class _FunctionalCondition(Condition):
     def valid(self, v):
         if self._fail:
            return
+        if v and not self._valid:
+            _logger.info("Condition:%s: VALID", self.name)
         self._metric_valid.value = 1 if v else 0
         self._valid = v
         self._show_progress()
@@ -98,11 +101,13 @@ class _FunctionalCondition(Condition):
         Marks the condition as failed. Once a condition has failed it
         can never become valid, the test that uses the condition will fail.
         """
+        if not self._fail:
+            _logger.error("Condition:%s: FAILED", self.name)
         self._metric_fail.value = 1
         self.valid = False
         self._fail = True
         if (ec.is_standalone()):
-            raise AssertionError("Condition failed:" + str(self))
+            raise AssertionError("Condition:{}: FAILED".format(self.name))
 
     def __getstate__(self):
         # Remove metrics from saved state.
@@ -115,10 +120,9 @@ class _FunctionalCondition(Condition):
             del state[key]
         return state
 
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-
     def __enter__(self):
+        # Provide breadcrumbs of what the check is.
+        _logger.debug(str(self))
         self._metric_valid = self._create_metric("valid", kind='Gauge')
         self._metric_seq = self._create_metric("seq")
         self._metric_fail = self._create_metric("fail", kind='Gauge')
@@ -130,9 +134,12 @@ class _FunctionalCondition(Condition):
             self.valid = self._valid
          
     def __exit__(self, exc_type, exc_value, traceback):
-        if (ec.is_standalone()):
+        if not self._fail and not self.valid:
+            _logger.warning("Condition:%s: NOT VALID at __exit__.", self.name)
+            
+        if ec.is_standalone():
             if exc_type is None and not self._valid:
-                raise AssertionError("Condition did not become valid:" + str(self))
+                raise AssertionError("Condition:{}: NOT VALID.".format(self.name))
 
     def _create_metric(self, mt, kind=None):
         return ec.CustomMetric(self, name=Condition._mn(mt, self.name), kind=kind)
@@ -142,42 +149,64 @@ class _StreamCondition(_FunctionalCondition):
     def __call__(self, tuple_):
         self._show_progress()
 
-class _TupleExactCount(_StreamCondition):
-    def __init__(self, target, name=None):
-        super(_TupleExactCount, self).__init__(name)
+class _TupleCount(_StreamCondition):
+    def __init__(self, target, name, exact=None):
+        super(_TupleCount, self).__init__(name)
         self.target = target
         self.count = 0
+        self.exact = exact
         self._valid = target == 0
+
+    def __call__(self, tuple_):
+        super(_TupleCount, self).__call__(tuple_)
+        self.count += 1
+        self._metric_count.value = self.count
+
+    def __enter__(self):
+        super(_TupleCount, self).__enter__()
+        self._metric_target = ec.CustomMetric(self, name='nTuplesExpected',  kind='Counter')
+        self._metric_count = ec.CustomMetric(self, name='nTuplesReceived',  kind='Counter')
+        if self.exact is not None:
+            self._metric_exact = ec.CustomMetric(self, name='exactCount',  kind='Gauge')
+            self._metric_exact.value = self.exact
+
+        self._metric_target.value = self.target
+        self._metric_count.value = self.count
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        super(_TupleCount, self).__exit__(exc_type, exc_value, traceback)
+
+class _TupleExactCount(_TupleCount):
+    def __init__(self, target, name):
+        super(_TupleExactCount, self).__init__(target, name, exact=1)
 
     def __call__(self, tuple_):
         super(_TupleExactCount, self).__call__(tuple_)
-        self.count += 1
-        self.valid = self.target == self.count
-        if self.count > self.target:
+        if self.target == self.count:
+            self.valid = True
+        elif self.count > self.target:
             self.fail()
 
     def __str__(self):
-        return "Exact tuple count: expected:" + str(self.target) + " received:" + str(self.count)
+        return "Condition:{}: Exact tuple count: expected:{} received:{}".format(self.name, self.target, self.count)
 
-class _TupleAtLeastCount(_StreamCondition):
-    def __init__(self, target, name=None):
-        super(_TupleAtLeastCount, self).__init__(name)
-        self.target = target
-        self.count = 0
-        self._valid = target == 0
+class _TupleAtLeastCount(_TupleCount):
+    def __init__(self, target, name):
+        super(_TupleAtLeastCount, self).__init__(target, name, exact=0)
 
     def __call__(self, tuple_):
         super(_TupleAtLeastCount, self).__call__(tuple_)
-        self.count += 1
-        self.valid = self.count >= self.target
+        if self.target >= self.count:
+            self.valid = True
 
     def __str__(self):
-        return "At least tuple count: expected:" + str(self.target) + " received:" + str(self.count)
+        return "Condition:{}: At least tuple count: expected:{} received:{}".format(self.name, self.target, self.count)
 
-class _StreamContents(_StreamCondition):
+class _StreamContents(_TupleCount):
     def __init__(self, expected, name=None):
-        super(_StreamContents, self).__init__(name)
-        self.expected = list(expected)
+        expected = list(expected)
+        super(_StreamContents, self).__init__(len(expected), name)
+        self.expected = expected
         self.received = []
 
     def __call__(self, tuple_):
@@ -190,27 +219,33 @@ class _StreamContents(_StreamCondition):
         if self._check_for_failure():
             return
 
-        self.valid = len(self.received) == len(self.expected)
+        if len(self.received) == len(self.expected):
+            self.valid = True
 
     def _check_for_failure(self):
-        """Check for failure.
+        """Check for failure with ordered tuples.
         """
         tc = len(self.received) - 1
         if self.expected[tc] != self.received[tc]:
-            _logger.error("Tuple %d: expected %s, received %s" , tc, str(self.expected[tc]), str(self.received[tc]))
+            _logger.error("Condition:%s: Position %d Expected tuple %s received %s", self.name, tc, self.expected[tc], self.received[tc])
             self.fail()
             return True
         return False
 
     def __str__(self):
-        return "Stream contents: expected:" + str(self.expected) + " received:" + str(self.received)
+        return "Condition:{}: Stream contents: expected:{}".format(self.name, str(self.expected))
 
 class _UnorderedStreamContents(_StreamContents):
     def _check_for_failure(self):
         """Unordered check for failure.
 
-        Can only check when the expected number of tuples have been received.
+        Can only fully check when the expected number of tuples have been received.
         """
+        tuple_ = self.received[-1]
+        if not tuple_ in self.expected:
+            _logger.error("Condition:%s: Tuple count %d Received unexpected tuple %s", self.name, len(self.receivied), tuple_)
+            self.fail()
+            return True
         if len(self.expected) == len(self.received):
             if collections.Counter(self.expected) != collections.Counter(self.received):
                 self.fail()
@@ -231,8 +266,28 @@ class _TupleCheck(_StreamCondition):
             self.valid = True
 
     def __str__(self):
-        return "Tuple checker:" + str(self.checker)
+        return "Condition:{}: Tuple checker:{}".format(self.name, str(self.checker))
 
+class _EventualResult(_StreamCondition):
+    def __init__(self, checker, name):
+        super(_EventualResult, self).__init__(name)
+        self.checker = checker
+
+    def __call__(self, tuple_):
+        super(_EventualResult, self).__call__(tuple_)
+        if self._fail:
+            return
+        result_ok = self.checker(tuple_)
+        if result_ok is None:
+            return
+
+        if result_ok:
+            self.valid = True
+        else:
+            self.fail()
+
+    def __str__(self):
+        return "Condition:{}: Eventual result:{}".format(self.name, str(self.checker))
 
 class _Resetter(Condition):
     CONDITION_NAME = "ConditionRegionResetter"
@@ -265,4 +320,4 @@ class _RunFor(_FunctionalCondition):
             yield None
 
     def __str__(self):
-        return "Test run time:" + str(self.duration)
+        return "Condition:{}: Run time duration:{} running:{}".format(self.name, str(self.duration), str(time.time() - start))

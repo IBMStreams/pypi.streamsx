@@ -1,4 +1,7 @@
-/* Additional includes go here */
+@include "../py_pystateful.cgt"
+@include "../../opt/python/codegen/py_state.cgt"
+
+#include "splpy.h"
 #include "splpy_funcop.h"
 
 using namespace streamsx::topology;
@@ -13,19 +16,15 @@ using namespace streamsx::topology;
  my $oport = $model->getOutputPortAt(0);
 %>
 
-class MY_OPERATOR : public MY_BASE_OPERATOR, public DelegatingStateHandler
+class MY_OPERATOR : public MY_BASE_OPERATOR
+#if SPLPY_OP_STATEFUL == 1
+      ,public DelegatingStateHandler
+#endif
 {
 public:
-  // Constructor
   MY_OPERATOR();
-
-  // Destructor
   virtual ~MY_OPERATOR(); 
-
-  // Notify termination
   void prepareToShutdown(); 
-
-  // Tuple processing for non-mutating ports
   void process(Tuple const & tuple, uint32_t port);
   void process(Punctuation const & punct, uint32_t port);
 
@@ -33,10 +32,8 @@ private:
 <%
 if ($pyoutstyle eq 'dict') {
 %>
-    void fromPythonToPort0(PyObject * pyTuple);
-    void fromPythonDictToPort0(PyObject * pyDict);
-    void fromPyTupleToSPLTuple(PyObject *pyDict, <%=$oport->getCppTupleType()%> & otuple);
-    void fromPyDictToSPLTuple(PyObject *pyTuple, <%=$oport->getCppTupleType()%> & otuple);
+    void fromPyTupleToSPLTuple(PyObject *pyDict, OPort0Type & otuple);
+    void fromPyDictToSPLTuple(PyObject *pyTuple, OPort0Type & otuple);
 <%}%>
 
     SplpyOp * op() { return funcop_; }
@@ -53,7 +50,6 @@ if ($pyoutstyle eq 'dict') {
     int32_t occ_;
 
     @include "../../opt/python/codegen/py_enable_cr.cgt"
-    OptionalConsistentRegionContext crContext;
 }; 
 
 <%SPL::CodeGen::headerEpilogue($model);%>

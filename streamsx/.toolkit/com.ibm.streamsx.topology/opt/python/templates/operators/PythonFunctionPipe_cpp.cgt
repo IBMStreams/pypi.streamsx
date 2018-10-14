@@ -3,11 +3,6 @@
  * # Copyright IBM Corp. 2015,2016
  */
 
-#include "splpy.h"
-#include "splpy_pyop.h"
-
-using namespace streamsx::topology;
-
 <%SPL::CodeGen::implementationPrologue($model);%>
 
 <%
@@ -36,6 +31,7 @@ using namespace streamsx::topology;
  }
  
   my $oport = $model->getOutputPortAt(0);
+  my $oport_submission = 1;
   my $otupleType = $oport->getSPLTupleType();
   my @onames = SPL::CodeGen::Type::getAttributeNames($otupleType);
   my @otypes = SPL::CodeGen::Type::getAttributeTypes($otupleType);
@@ -44,7 +40,6 @@ using namespace streamsx::topology;
   my $skip_set_callable = 0;
 %>
 
-// Constructor
 MY_OPERATOR::MY_OPERATOR() :
    pyop_(NULL),
    pyInNames_(NULL),
@@ -62,26 +57,25 @@ MY_OPERATOR::MY_OPERATOR() :
                getInputPortAt(0));
 <% } %>
    }
+
+#if SPLPY_OP_STATEFUL == 1
+   this->getContext().registerStateHandler(*this);
+#endif
 }
 
-// Destructor
 MY_OPERATOR::~MY_OPERATOR() 
 {
    {
    SplpyGIL lock;
-   if (pyInNames_)
-      Py_DECREF(pyInNames_);
-   if (pyOutNames_0)
-      Py_DECREF(pyOutNames_0);
+   Py_CLEAR(pyInNames_);
+   Py_CLEAR(pyOutNames_0);
    }
 
    delete pyop_;
 }
 
-// Notify pending shutdown
 void MY_OPERATOR::prepareToShutdown() 
 {
-    OptionalAutoLock stateLock(this);
     pyop_->prepareToShutdown();
 }
 
@@ -89,7 +83,6 @@ void MY_OPERATOR::prepareToShutdown()
   my $no_tuples_action = "";
 %>
 
-// Tuple processing for non-mutating ports
 void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 {
  @include  "../../opt/.__splpy/common/py_splTupleCheckForBlobs.cgt"
@@ -111,10 +104,8 @@ void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
 @include  "../../opt/.__splpy/common/py_valueToTuples.cgt"
 @include  "../../opt/.__splpy/common/py_pyTupleTosplTuple.cgt"
 
-// Punctuation processing
 void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
 {
-    OptionalAutoLock stateLock(this);
     forwardWindowPunctuation(punct);
 }
 

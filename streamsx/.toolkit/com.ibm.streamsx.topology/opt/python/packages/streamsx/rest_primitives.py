@@ -679,18 +679,7 @@ class Job(_ResourceElement):
         Returns:
             bool: True if the job was cancelled, otherwise False if an error occurred.
         """
-        if not self.rest_client._sc._analytics_service:
-            import streamsx.st as st
-            if st._has_local_install:
-                if not st._cancel_job(self.id, force):
-                    if force:
-                        return False
-                    return st._cancel_job(self.id, force=True)
-                return True
-        else:
-            self.rest_client._sc.get_streaming_analytics().cancel_job(self.id)
-            return True
-        raise NotImplementedError('Job.cancel()')
+        return self.rest_client._sc._delegator._cancel_job(self, force)
 
 
 class Operator(_ResourceElement):
@@ -1237,6 +1226,11 @@ class Instance(_ResourceElement):
         >>> print (instances[0].resourceType)
         instance
     """
+
+    def __init__(self, json_rep, rest_client):
+        super(Instance, self).__init__(json_rep, rest_client)
+        self._delegator = rest_client._sc._delegator
+
     def get_operators(self, name=None):
         """Get the list of :py:class:`Operator` elements associated with this instance.
 
@@ -1421,6 +1415,45 @@ class Instance(_ResourceElement):
 
         return published_topics
 
+    def upload_bundle(self, bundle):
+        """Upload a Streams application bundle (sab) to the instance.
+
+        Uploading a bundle allows job submission from the returned
+        :py:class:`ApplicationBundle`.
+
+        Args:
+            bundle(str): path to a Streams application bundle (sab file)
+                containing the application to be uploaded.
+
+        Returns:
+            ApplicationBundle: Application bundle representing the
+            uploaded bundle. 
+
+        .. note::
+            When an instance does not support uploading a bundle the
+            returned `ApplicationBundle` represents the local file
+            ``bundle`` tied to this instance. The returned object
+            may still be used for job submission.
+         
+        .. versionadded:: 1.11
+        """
+        return self._delegator._upload_bundle(self, bundle)
+
+    def submit_job(self, bundle, job_config=None):
+        """Submit a application to be run in this instance.
+
+        Args:
+            bundle(str): path to a Streams application bundle (sab file)
+                containing the application to be submitted
+            job_config(JobConfig): a job configuration overlay
+
+        
+        Returns:
+            Job: Resulting job instance.
+
+        .. versionadded:: 1.11
+        """
+        return self.upload_bundle(bundle).submit_job(job_config)
 
 class ResourceTag(object):
     """Resource tag defined in a Streams domain
@@ -1689,6 +1722,16 @@ class _StreamingAnalyticsServiceV2Delegator(object):
                 raise ValueError("Cannot obtain jobs URL")
         return self._jobs_url
 
+    def _upload_bundle(self, instance, bundle):
+        return _FileBundle(self, instance, bundle, {'self':None}, self.rest_client)
+
+    def _submit_bundle(self, bundle, job_config):
+        sr = self._submit_job(bundle._bundle_path, job_config)
+        return sr['id']
+
+    def _cancel_job(self, job, force):
+        return self.cancel_job(job_id=job.id)
+
     def _submit_job(self, bundle, job_config):
         sab_name = os.path.basename(bundle)
 
@@ -1704,6 +1747,7 @@ class _StreamingAnalyticsServiceV2Delegator(object):
                 files=files)
             self.rest_client.handle_http_errors(res)
             return res.json()
+
 
     def cancel_job(self, job_id=None, job_name=None):
         if job_id is None and job_name is None:
@@ -1764,6 +1808,16 @@ class _StreamingAnalyticsServiceV1Delegator(object):
 
     def _get_url(self, req_name):
         return self._credentials['rest_url'] + self._credentials[req_name]
+
+    def _upload_bundle(self, instance, bundle):
+        return _FileBundle(self, instance, bundle, {'self':None}, self.rest_client)
+
+    def _submit_bundle(self, bundle, job_config):
+        sr = self._submit_job(bundle._bundle_path, job_config)
+        return sr['id']
+
+    def _cancel_job(self, job, force):
+        return self.cancel_job(job_id=job.id)
 
     def _submit_job(self, bundle, job_config):
         sab_name = os.path.basename(bundle)
@@ -1879,3 +1933,130 @@ class _IAMConstants(object):
     """Padding to ensure that a new IAM token is retrieved when the current token is due to expire
     in less than five minutes.
     """
+
+class ApplicationBundle(_ResourceElement):
+    """Application bundle tied to an instance.
+
+    .. versionadded:: 1.11
+    """
+    def __init__(self, _delegator, instance, json_rep, rest_client):
+        super(ApplicationBundle, self).__init__(json_rep, rest_client)
+        self._instance = instance
+        self._delegator = _delegator
+
+    def submit_job(self, job_config=None):
+        """Submit this Streams Application Bundle (sab file) to
+        its associated instance.
+        
+        Args:
+            job_config(JobConfig): a job configuration overlay
+        
+        Returns:
+            Job: Resulting job instance.
+        """
+        job_id = self._delegator._submit_bundle(self, job_config)
+        return self._instance.get_job(job_id)
+
+# An ApplicationBundle for cases when we cannot upload the
+# sab file (e.g. Streaming Analytics, Streams 4.2/4.3
+class _FileBundle(ApplicationBundle):
+    def __init__(self, _delegator, instance, bundle, json_rep, rest_client):
+        super(_FileBundle, self).__init__(_delegator, instance, json_rep, rest_client)
+        self._bundle_path = os.path.abspath(bundle)
+
+# As of 1.11 several methods are always driven through delegators
+# to allow the same API vary the underlying implementation.
+# A delegator has at least these methods:
+#
+# _upload_bundle - Uploads a bundle to the instance, or if that's
+#                  not supported return an ApplicationBundle that
+#                  represents the local file
+#
+# _submit_bundle - Submit an ApplicationBundle as a running job
+#
+# _cancel_job - Cancel a running job
+
+def _streams_delegator(sc):
+    root_resources = sc.rest_client.make_request(sc.resource_url)
+    has_domains = False
+    for resource in root_resources['resources']:
+        if resource['name'] == 'domains':
+            has_domains = True
+            break
+  
+    if has_domains:
+        return _StreamsV4Delegator(sc.rest_client)
+    return _StreamsRestDelegator(sc.rest_client)
+
+class _StreamsV4Delegator(object):
+    """Delegator for a IBM Streams 4.2/4.3 instance.
+    """
+    def __init__(self, rest_client):
+        self.rest_client = rest_client
+
+    def _upload_bundle(self, instance, bundle):
+        return _FileBundle(self, instance, bundle, {'self':None}, self.rest_client)
+
+    def _submit_bundle(self, bundle, job_config):
+        return streamsx.st._submit_bundle(bundle._bundle_path, job_config,
+            domain_id=bundle._instance.get_domain().id, instance_id=bundle._instance.id)
+
+    def _cancel_job(self, job, force):
+        """Cancel job using streamtool."""
+        import streamsx.st as st
+        if st._has_local_install:
+            return st._cancel_job(job.id, force,
+                domain_id=job.get_instance().get_domain().id, instance_id=job.get_instance().id)
+        return False
+
+class _UploadedBundle(ApplicationBundle):
+    def _app_id(self):
+        app_id = self.application
+        if app_id is None:
+            self.refresh()
+            app_id = self.application
+
+        # One time use only
+        self.json_rep['application'] = None
+        return app_id
+
+class _StreamsRestDelegator(object):
+    """Delegator for IBM Streams instances where the
+       Streams REST API provides actions.
+    """
+    def __init__(self, rest_client):
+        self.rest_client = rest_client
+
+    def _upload_bundle(self, instance, bundle):
+        app_bundle_url = instance.self + '/applicationbundles'
+
+        sab_name = os.path.basename(bundle)
+        with open(bundle, 'rb') as bundle_fp:
+            res = self.rest_client.session.post(app_bundle_url,
+                headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json', 'Content-Type': 'application/x-jar'},
+                data=bundle_fp)
+            self.rest_client.handle_http_errors(res)
+            if res.status_code != 201:
+                raise ValueError(str(res))
+            location = res.headers['Location']
+            json_rep = self.rest_client.make_request(location)
+            return _UploadedBundle(self, instance, json_rep, self.rest_client)
+
+    def _submit_bundle(self, bundle, job_config):
+        job_options = job_config.as_overlays() if job_config else {}
+        app_id = bundle._app_id()
+        res = self.rest_client.session.post(bundle._instance.jobs,
+           headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json'}, json={'application': app_id, 'jobConfigurationOverlay':job_options, 'preview':False})
+        self.rest_client.handle_http_errors(res)
+        if res.status_code != 201:
+            raise ValueError(str(res))
+        location = res.headers['Location']
+        job = Job({'self': location}, self.rest_client)
+        job.refresh()
+        return job.id
+
+    def _cancel_job(self, job, force):
+        cancel_url = job.instance + '/jobs/' + job.id
+        res = self.rest_client.session.delete(cancel_url,
+                headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json'})
+        #TODO return code

@@ -13,13 +13,6 @@ sub main::generate($$) {
    my $model = SPL::Operator::Instance::OperatorInstance->new($$xml);
    unshift @INC, dirname ($model->getContext()->getOperatorDirectory()) . "/../impl/nl/include";
    $SPL::CodeGenHelper::verboseMode = $model->getContext()->isVerboseModeOn();
-   print '/* Additional includes go here */', "\n";
-   print "\n";
-   print '#include "splpy.h"', "\n";
-   print '#include "splpy_funcop.h"', "\n";
-   print "\n";
-   print 'using namespace streamsx::topology;', "\n";
-   print "\n";
    SPL::CodeGen::implementationPrologue($model);
    print "\n";
    print "\n";
@@ -72,7 +65,6 @@ sub main::generate($$) {
    print '#define SPLPY_AGGREGATE(f, v, r, occ) \\', "\n";
    print '    streamsx::topology::Splpy::pyTupleMap(f, v, r)', "\n";
    print "\n";
-   print '// Constructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
    print '   pyInStyleObj_(NULL),', "\n";
@@ -80,8 +72,7 @@ sub main::generate($$) {
    print '   occ_(-1),', "\n";
    print '   window_(';
    print $windowCppInitializer;
-   print '),', "\n";
-   print '   crContext(this)', "\n";
+   print ')', "\n";
    print '{', "\n";
     if ($window->isSliding()) {
    print "\n";
@@ -129,7 +120,7 @@ sub main::generate($$) {
     }
    print "\n";
    print "\n";
-   print '    funcop_ = new SplpyFuncOp(this, out_wrapfn);', "\n";
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, out_wrapfn);', "\n";
    print "\n";
     if ($pystyle_fn eq 'dict') { 
    print "\n";
@@ -174,9 +165,11 @@ sub main::generate($$) {
     } 
    print "\n";
    print '    }', "\n";
+   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '   this->getContext().registerStateHandler(*this);', "\n";
+   print '#endif', "\n";
    print '}', "\n";
    print "\n";
-   print '// Destructor', "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
    print '  delete funcop_;', "\n";
@@ -186,23 +179,18 @@ sub main::generate($$) {
    print "\n";
    print '  {', "\n";
    print '      SplpyGIL lock;', "\n";
-   print '      if (loads != NULL){', "\n";
-   print '      	 Py_DECREF(loads);', "\n";
-   print '      }', "\n";
+   print '      Py_CLEAR(loads);', "\n";
    print '  }', "\n";
    print '  ';
     } 
    print "\n";
    print '}', "\n";
    print "\n";
-   print '// Notify pending shutdown', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
    print '{', "\n";
-   print '    OptionalAutoLock stateLock(this);', "\n";
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
-   print '// Tuple processing for non-mutating ports', "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
    # Takes the input SPL tuple and converts it to
@@ -371,7 +359,6 @@ sub main::generate($$) {
    print '{', "\n";
     if ($window->isTumbling()) {
    print "\n";
-   print '   SPLAPPTRC(L_DEBUG, "Acquire state lock if needed", SPL_OPER_DBG);', "\n";
    print '    OptionalAutoLock stateLock(this);', "\n";
    print "\n";
    print '   // Aggregate the remaining contents if there are some.', "\n";
@@ -440,23 +427,31 @@ sub main::generate($$) {
    print '// End Window Event Handler Overrides', "\n";
    print '// ##################################', "\n";
    print "\n";
+   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::drain() {', "\n";
+   print '    SPLAPPTRC(L_TRACE, "drain: enter", "python");', "\n";
+   print '    window_.drain();', "\n";
+   print '    SPLAPPTRC(L_TRACE, "drain: exit", "python");', "\n";
+   print '}', "\n";
+   print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::checkpointExtra(SPL::Checkpoint & ckpt) {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: enter", SPL_OPER_DBG);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: enter", "python");', "\n";
    print '    window_.checkpoint(ckpt);', "\n";
-   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: exit", SPL_OPER_DBG);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: exit", "python");', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetExtra(SPL::Checkpoint & ckpt) {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetExtra", SPL_OPER_DBG);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetExtra", "python");', "\n";
    print '    window_.reset(ckpt);', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetExtra: exit", SPL_OPER_DBG);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetExtra: exit", "python");', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetToInitialStateExtra() {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: enter", SPL_OPER_DBG);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: enter", "python");', "\n";
    print '    window_.resetToInitialState();', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: exit", SPL_OPER_DBG);', "\n";
+   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: exit", "python");', "\n";
    print '}', "\n";
+   print '#endif', "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);
    print "\n";
