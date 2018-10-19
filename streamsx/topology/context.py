@@ -214,7 +214,8 @@ class _BaseSubmitter(object):
         self.results_file = _file.name
         logger.debug("Results file created at " + _file.name)
 
-        self.config[ConfigParams.STREAMS_CONNECTION] = sc
+        if sc is not None:
+            self.config[ConfigParams.STREAMS_CONNECTION] = sc
         return fj
 
     def _create_json_file(self, fj):
@@ -386,8 +387,20 @@ class _DistributedSubmitter(_BaseSubmitter):
             self._streams_connection = rest.StreamsConnection(self.username, self.password)
         return self._streams_connection
 
+    def _get_java_env(self):
+        "Set env vars from connection if set"
+        env = super(_DistributedSubmitter, self)._get_java_env()
+        if self._streams_connection is not None:
+            sc = self._streams_connection
+            env.pop('STREAMS_DOMAIN_ID', None)
+            env.pop('STREAMS_USERNAME', None)
+            env.pop('STREAMS_PASSWORD', None)
+            env['STREAMS_REST_URL'] = sc.resource_url
+            env['STREAMS_USERNAME'] = sc.rest_client._username
+            env['STREAMS_PASSWORD'] = sc.rest_client._password
+        return env
+
     def _augment_submission_result(self, submission_result):
-        submission_result['instanceId'] = os.environ.get('STREAMS_INSTANCE_ID', 'StreamsInstance')
         # If we have the information to create a StreamsConnection, do it
         if not ((self.username is None or self.password is None) and
                         self.config.get(ConfigParams.STREAMS_CONNECTION) is None):
