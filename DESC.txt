@@ -4,7 +4,7 @@ IBM Cloud and on-premises IBM Streams.
  * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
  * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
-See `1.11.2 alpha release notes <https://github.com/IBMStreams/streamsx.topology/releases/tag/v1.11.2_alpha>`_ for details on new functionality in this release.
+See `1.11.4 alpha release notes <https://github.com/IBMStreams/streamsx.topology/releases/tag/v1.11.4_alpha>`_ for details on new functionality in this release.
 
 Documentation links below are currently for 1.9 release.
 
