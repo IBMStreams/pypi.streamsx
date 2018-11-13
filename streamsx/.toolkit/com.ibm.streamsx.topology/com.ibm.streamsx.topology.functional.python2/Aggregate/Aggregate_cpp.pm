@@ -51,6 +51,19 @@ sub main::generate($$) {
    print "\n";
    print "\n";
    
+   #
+   # Locking
+   #
+   # If a window has real-time based policies then window acquire
+   # data is used as locking. In this case the window object itself
+   # gets all the locking.
+   #
+   # Otherwise if the window has a state handler then an AutoMutex
+   # is used to provide locking between tuple/punct processing and
+   # state handler methods.
+   #
+   # Otherwise tuple/punct processing is protected by an AutoPortMutex.
+   
    # Configure Windowing
     my $inputPort = $model->getInputPortAt(0); 
     my $window = $inputPort->getWindow();
@@ -86,6 +99,10 @@ sub main::generate($$) {
    }
    print "\n";
    print "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '    window_.registerSerializationHandler(this);', "\n";
+   print '#endif', "\n";
+   print "\n";
    print '    const char * out_wrapfn = "';
    print $out_pywrapfunc;
    print '";', "\n";
@@ -120,7 +137,7 @@ sub main::generate($$) {
     }
    print "\n";
    print "\n";
-   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, out_wrapfn);', "\n";
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, out_wrapfn);', "\n";
    print "\n";
     if ($pystyle_fn eq 'dict') { 
    print "\n";
@@ -165,7 +182,7 @@ sub main::generate($$) {
     } 
    print "\n";
    print '    }', "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '   this->getContext().registerStateHandler(*this);', "\n";
    print '#endif', "\n";
    print '}', "\n";
@@ -290,8 +307,6 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '  OptionalAutoLock stateLock(this);', "\n";
-   print "\n";
    print '  PyObject *python_value;', "\n";
    print "\n";
    print '  // If the input style is pickle,', "\n";
@@ -352,6 +367,14 @@ sub main::generate($$) {
    print "\n";
    print "\n";
    print "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 1', "\n";
+   print '   // window_.insert() obtains the mutex.', "\n";
+   print '#elif SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#else', "\n";
+   print '    SPL::AutoPortMutex am(mutex_, *this);', "\n";
+   print '#endif', "\n";
+   print "\n";
    print '  window_.insert(python_value);', "\n";
    print '}', "\n";
    print "\n";
@@ -359,24 +382,42 @@ sub main::generate($$) {
    print '{', "\n";
     if ($window->isTumbling()) {
    print "\n";
-   print '    OptionalAutoLock stateLock(this);', "\n";
-   print "\n";
    print '   // Aggregate the remaining contents if there are some.', "\n";
-   print '   if (punct == Punctuation::FinalMarker) {', "\n";
-   print '       SPL::AutoWindowDataAcquirer<PyObject *> awd(window_);', "\n";
-   print '       Window<PyObject *>::StorageType & storage = window_.getWindowStorage();', "\n";
-   print '       Window<PyObject *>::DataType & content = storage[0];', "\n";
-   print '       if (content.size() > 0)', "\n";
-   print '            onWindowTriggerEvent(window_, 0);', "\n";
-   print '   }', "\n";
+   print '   if (punct == Punctuation::FinalMarker)', "\n";
+   print '       aggregateRemaining();', "\n";
    }
    print "\n";
    print '}', "\n";
+   print "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::aggregateRemaining() {', "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 1', "\n";
+   print '    SPL::AutoWindowDataAcquirer<PyObject *> awd(window_);', "\n";
+   print '#elif SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#else', "\n";
+   print '    SPL::AutoPortMutex am(mutex_, *this);', "\n";
+   print '#endif', "\n";
+   print '    Window<PyObject *>::StorageType & storage = window_.getWindowStorage();', "\n";
+   print '    Window<PyObject *>::DataType & content = storage[0];', "\n";
+   print '    if (!content.empty()) {', "\n";
+   print '        beforeWindowFlushEvent(window_, 0);', "\n";
+   print "\n";
+   print '       // Since we have processed these tuples in batch', "\n";
+   print '       // don\'t process them again. ', "\n";
+   print '       content.clear();', "\n";
+   print '    }', "\n";
+   print '}', "\n";
+   }
+   print "\n";
    print "\n";
    print "\n";
    print '// ##############################', "\n";
    print '// Window Event Handler Overrides', "\n";
    print '// ##############################', "\n";
+   print "\n";
+    if ($window->isSliding()) {
    print "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::afterTupleEvictionEvent(', "\n";
@@ -386,7 +427,21 @@ sub main::generate($$) {
    print '     Py_DECREF(tuple);', "\n";
    print '}', "\n";
    print "\n";
-   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::onWindowTriggerEvent(Window<PyObject *> & window, Window<PyObject *>::PartitionType const & key){    ', "\n";
+   }
+   print "\n";
+   print "\n";
+   print '// Perform the aggregation.', "\n";
+    if ($window->isSliding()) {
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::onWindowTriggerEvent(', "\n";
+   }
+   print "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::beforeWindowFlushEvent(', "\n";
+   }
+   print "\n";
+   print '    Window<PyObject *> & window, Window<PyObject *>::PartitionType const & key){    ', "\n";
    print '    Window<PyObject *>::StorageType & storage = window.getWindowStorage();', "\n";
    print "\n";
    print '    Window<PyObject *>::DataType & content = storage[key];', "\n";
@@ -397,9 +452,14 @@ sub main::generate($$) {
    print '    unsigned int idx = 0;', "\n";
    print '    for(WindowType::DataType::iterator it=content.begin(); it!=content.end(); ++it) {', "\n";
    print '        PyObject *item = *it;', "\n";
-   print '	// The tuple steals a reference, increment such that the window can maintain a copy', "\n";
-   print '	// once the tuple is deleted.', "\n";
+    if ($window->isSliding()) {
+   print "\n";
+   print '	// The list steals a reference, increment such that the window can maintain a copy', "\n";
+   print '	// once the tuple is deleted. Woith tumbling the window does', "\n";
+   print '        // retain the contents.', "\n";
    print '	Py_INCREF(item);', "\n";
+   }
+   print "\n";
    print '	PyList_SET_ITEM(items, idx, item);', "\n";
    print '	++idx;', "\n";
    print '    }', "\n";
@@ -427,30 +487,51 @@ sub main::generate($$) {
    print '// End Window Event Handler Overrides', "\n";
    print '// ##################################', "\n";
    print "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print "\n";
+   print '/* StateHandler methods */', "\n";
+   print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::drain() {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "drain: enter", "python");', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "drain-Aggregate: enter", SPLPY_SH_ASPECT);', "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print '   aggregateRemaining();', "\n";
+   }
+   print "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 0', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#endif', "\n";
    print '    window_.drain();', "\n";
-   print '    SPLAPPTRC(L_TRACE, "drain: exit", "python");', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "drain-Aggregate: exit", SPLPY_SH_ASPECT);', "\n";
    print '}', "\n";
    print "\n";
-   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::checkpointExtra(SPL::Checkpoint & ckpt) {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: enter", "python");', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::checkpoint(SPL::Checkpoint & ckpt) {', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "checkpoint-Aggregate: enter", SPLPY_SH_ASPECT);', "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 0', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#endif', "\n";
    print '    window_.checkpoint(ckpt);', "\n";
-   print '    SPLAPPTRC(L_TRACE, "checkpointExtra: exit", "python");', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "checkpoint-Aggregate: exit", SPLPY_SH_ASPECT);', "\n";
    print '}', "\n";
    print "\n";
-   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetExtra(SPL::Checkpoint & ckpt) {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetExtra", "python");', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::reset(SPL::Checkpoint & ckpt) {', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "reset-Aggregate: enter", SPLPY_SH_ASPECT);', "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 0', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#endif', "\n";
    print '    window_.reset(ckpt);', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetExtra: exit", "python");', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "reset-Aggregate: exit", SPLPY_SH_ASPECT);', "\n";
    print '}', "\n";
    print "\n";
-   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetToInitialStateExtra() {', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: enter", "python");', "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::resetToInitialState() {', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "resetToInitialState-Aggregate: enter", SPLPY_SH_ASPECT);', "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 0', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#endif', "\n";
    print '    window_.resetToInitialState();', "\n";
-   print '    SPLAPPTRC(L_TRACE, "resetToInitialStateExtra: exit", "python");', "\n";
+   print '    SPLAPPTRC(L_DEBUG, "resetToInitialState-Aggregate: exit", SPLPY_SH_ASPECT);', "\n";
    print '}', "\n";
+   print "\n";
    print '#endif', "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);

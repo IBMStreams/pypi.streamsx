@@ -2,7 +2,6 @@
 # SPL_CGT_INCLUDE: ../py_pystateful.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_disallow_cr_trigger.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_state.cgt
-# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_enable_cr.cgt
 
 package Aggregate_h;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
@@ -22,9 +21,10 @@ sub main::generate($$) {
     #     $pyStateful is set to 0/1 if the operator's callable is not/stateful
     #
     # Sets CPP defines:
-    #     SPLPY_OP_STATEFUL - Set to 1 if the operator needs a state handle.
+    #     SPLPY_OP_STATE_HANDLER - Set to 1 if the operator needs a state handle.
     #     SPLPY_OP_CR - Set to 1 is the operator is in a consistent region
     #     SPLPY_CALLABLE_STATEFUL - Set to 1 if the callable is stateful
+    #     SPLPY_CALLABLE_STATE_HANDLER - Set to 1 if op must preserve callable state
    
     my $isWindowed = 0;
     for (my $p = 0; $p < $model->getNumberOfInputPorts(); $p++) {
@@ -39,15 +39,16 @@ sub main::generate($$) {
     my $splpy_op_stateful = ($pyStateful or $isWindowed) && ($isInConsistentRegion or $ckptKind ne "none") ? 1 : 0;
    print "\n";
    print "\n";
-   print '#define SPLPY_OP_STATEFUL ';
+   print '#define SPLPY_OP_STATE_HANDLER ';
    print $splpy_op_stateful;
    print "\n";
    print '#define SPLPY_OP_CR ';
    print $isInConsistentRegion;
    print "\n";
    print '#define SPLPY_CALLABLE_STATEFUL ';
-   print $pyStateful && $splpy_op_stateful ? 1 : 0;
+   print $pyStateful ? 1 : 0;
    print "\n";
+   print '#define SPLPY_CALLABLE_STATE_HANDLER (SPLPY_OP_STATE_HANDLER && SPLPY_CALLABLE_STATEFUL)', "\n";
    print "\n";
    print '#include "splpy.h"', "\n";
    print '#include "splpy_funcop.h"', "\n";
@@ -82,6 +83,10 @@ sub main::generate($$) {
     my $inputPort = $model->getInputPortAt(0); 
     my $window = $inputPort->getWindow();
     my $windowCppType = SPL::CodeGen::getWindowCppType($window,"PyObject *");
+   print "\n";
+   print "\n";
+   print '#define SPLPY_AGGREGATE_TIME_POLICIES ';
+   print $window->getEvictionPolicyType() == $SPL::Operator::Instance::Window::Time || ($window->hasTriggerPolicy() && $window->getEvictionPolicyType() == $SPL::Operator::Instance::Window::Time) ? 1 : 0;
    print "\n";
    print "\n";
     # Generic setup of a variety of variables to
@@ -119,40 +124,52 @@ sub main::generate($$) {
    print "\n";
    print 'class MY_OPERATOR : public MY_BASE_OPERATOR,', "\n";
    print '      public WindowEvent<PyObject *>', "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
-   print '      ,public DelegatingStateHandler', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print ' , public SPL::StateHandler', "\n";
    print '#endif', "\n";
    print '{', "\n";
    print 'public:', "\n";
    print '  MY_OPERATOR();', "\n";
    print '  virtual ~MY_OPERATOR(); ', "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
-   print '  virtual void drain();', "\n";
-   print '#endif', "\n";
    print '  void prepareToShutdown(); ', "\n";
    print '  void process(Tuple const & tuple, uint32_t port);', "\n";
    print '  void process(Punctuation const & punct, uint32_t port);', "\n";
+   print "\n";
+   print '  ', "\n";
+    if ($window->isSliding()) {
+   print "\n";
    print '  void onWindowTriggerEvent(', "\n";
    print '     Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key);', "\n";
-   print '  void beforeWindowFlushEvent(', "\n";
-   print '     Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key) {', "\n";
-   print "\n";
-   print '     onWindowTriggerEvent(window, key);', "\n";
-   print '  }', "\n";
-   print '  ', "\n";
-   print 'void afterTupleEvictionEvent(', "\n";
+   print '  void afterTupleEvictionEvent(', "\n";
    print '     Window<PyObject *> & window,  Window<PyObject *>::TupleType & tuple,', "\n";
    print '     Window<PyObject *>::PartitionType const & partition);', "\n";
+   }
    print "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
-   print 'protected:', "\n";
-   print '  virtual void checkpointExtra(SPL::Checkpoint & ckpt);', "\n";
-   print '  virtual void resetExtra(SPL::Checkpoint & ckpt);', "\n";
-   print '  virtual void resetToInitialStateExtra();', "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print '  void beforeWindowFlushEvent(', "\n";
+   print '     Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key);', "\n";
+   }
+   print "\n";
+   print "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '  virtual void drain();', "\n";
+   print '  virtual void checkpoint(SPL::Checkpoint & ckpt);', "\n";
+   print '  virtual void reset(SPL::Checkpoint & ckpt);', "\n";
+   print '  virtual void resetToInitialState();', "\n";
+   print "\n";
+   print '  void onCheckpointEvent(SPL::Checkpoint & ckpt) const {op()->checkpoint(ckpt);}', "\n";
+   print '  void onResetEvent(SPL::Checkpoint & ckpt) {op()->reset(ckpt);}', "\n";
+   print '  void onResetToInitialStateEvent() {op()->resetToInitialState();}', "\n";
    print '#endif', "\n";
    print "\n";
    print 'private:', "\n";
-   print '    SplpyOp * op() { return funcop_; }', "\n";
+   print '    SplpyOp * op() const { return funcop_; }', "\n";
+    if ($window->isTumbling()) {
+   print "\n";
+   print '   void aggregateRemaining();', "\n";
+   }
+   print "\n";
    print "\n";
    print '    // Members', "\n";
    print '    // Control for interaction with Python', "\n";
@@ -172,27 +189,11 @@ sub main::generate($$) {
    print $windowCppType;
    print '  window_;	       ', "\n";
    print "\n";
-    
-    # Enable or disable checkpointing, including support for the necessary locking.
-   
-    # Checkpointing should be enabled if the operator is in a consistent region,
-    # or has checkpointing configured.  Also, the operator must be stateful,
-    # otherwise no checkpointing is needed.
-   
-    # This will generally be @included in the declaration of an SPL operator
-    # template.  It create static const values indicating whether the operator
-    # instance is in a consistent region, and whether it is checkpointing.
-    # It also provides some typedefs for types to be used by the operator
-    # to support checkpointing and consistent region.
-   
-   print "\n";
-   print '  // True if operator is stateful and checkpoint is enabled, ', "\n";
-   print '  // whether directly or through consistent region.', "\n";
-   print '  static const bool isCheckpointing = ';
-   print $splpy_op_stateful ? "true" : "false" ;
-   print ';', "\n";
-   print "\n";
-   print '  typedef OptionalAutoLockImpl<isCheckpointing> OptionalAutoLock;', "\n";
+   print '#if SPLPY_AGGREGATE_TIME_POLICIES == 0', "\n";
+   print '    // Locking is through window acquire data when', "\n";
+   print '    // there are time policies', "\n";
+   print '    SPL::Mutex mutex_;', "\n";
+   print '#endif', "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);

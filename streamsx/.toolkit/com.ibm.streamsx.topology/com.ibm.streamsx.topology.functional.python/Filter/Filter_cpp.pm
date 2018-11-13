@@ -53,6 +53,10 @@ sub main::generate($$) {
     my $pywrapfunc= $pystyle_fn . '_in';
    print "\n";
    print "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '#include "splpy_sh.h"', "\n";
+   print '#endif', "\n";
+   print "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
    print '   pyInStyleObj_(NULL)', "\n";
@@ -89,7 +93,7 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '   this->getContext().registerStateHandler(*this);', "\n";
    print '#endif', "\n";
    print '}', "\n";
@@ -113,7 +117,11 @@ sub main::generate($$) {
    print '{', "\n";
    print '    bool passed = false;', "\n";
    print '    {', "\n";
-   print '         OptionalAutoLock stateLock(this);', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '         SPL::AutoMutex am(mutex_);', "\n";
+   print '#elif SPLPY_CALLABLE_STATEFUL == 1', "\n";
+   print '         SPL::AutoPortMutex am(mutex_, *this);', "\n";
+   print '#endif', "\n";
    print '         try {', "\n";
    print "\n";
    # Takes the input SPL tuple and converts it to

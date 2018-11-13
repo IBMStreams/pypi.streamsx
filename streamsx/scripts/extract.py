@@ -21,6 +21,10 @@ import xml.etree.ElementTree as ET
 import html
 from streamsx.spl.spl import _OperatorType
 from streamsx.spl.spl import _valid_op_parameter
+import streamsx.spl.spl
+
+import streamsx._streams._version
+__version__ = streamsx._streams._version.__version__
 
 ############################################
 # setup for function inspection
@@ -35,18 +39,18 @@ else:
 
 # Return the root of the com.ibm.streamsx.topology toolkit
 def _topology_tk_dir():
-    dir = os.path.dirname(__file__) # streamsx/scripts
-    dir = os.path.dirname(dir) # streamsx
+    dir_ = os.path.dirname(__file__) # streamsx/scripts
+    dir_ = os.path.dirname(dir_) # streamsx
  
     # See if we are being run from streamsx package
-    pkg_tk = os.path.join(dir, '.toolkit', 'com.ibm.streamsx.topology')
+    pkg_tk = os.path.join(dir_, '.toolkit', 'com.ibm.streamsx.topology')
     if os.path.isdir(pkg_tk):
         return pkg_tk
 
     # Run from the SPL toolkit
     for _ in range(4):
-        dir = os.path.dirname(dir)
-    return dir
+        dir_ = os.path.dirname(dir_)
+    return dir_
 
 def replaceTokenInFile(file, token, value):
     f = open(file,'r')
@@ -408,12 +412,12 @@ class _Extractor(object):
         cfgfile.close()
 
     # Copy a single file from the templates directory to the newly created operator directory
-    def _copy_template_dir(self, dir):
-        self._copy_python_dir(os.path.join("templates", dir))
+    def _copy_template_dir(self, dir_):
+        self._copy_python_dir(os.path.join("templates", dir_))
 
-    def _copy_python_dir(self, dir):
-        cmn_src = os.path.join(_topology_tk_dir(), "opt", "python", dir);
-        cmn_dst = os.path.join(self._tk_dir, "opt", ".__splpy", os.path.basename(dir))
+    def _copy_python_dir(self, dir_):
+        cmn_src = os.path.join(_topology_tk_dir(), "opt", "python", dir_);
+        cmn_dst = os.path.join(self._tk_dir, "opt", ".__splpy", os.path.basename(dir_))
         if (os.path.isdir(cmn_dst)):
             shutil.rmtree(cmn_dst)
         shutil.copytree(cmn_src, cmn_dst)
@@ -489,6 +493,9 @@ def _extract_from_toolkit(args):
     """
 
     extractor = _Extractor(args)
+    if extractor._cmd_args.verbose:
+        print("spl-python-extract:", __version__)
+        print("Topology toolkit location:", _topology_tk_dir())
 
     tk_dir = extractor._tk_dir
 
@@ -550,7 +557,11 @@ def _reset_path(items):
         sys.path.remove(p)
 
 def main(args=None):
-    _extract_from_toolkit(args)
+    try:
+        streamsx.spl.spl._EXTRACTING.active = True
+        _extract_from_toolkit(args)
+    finally:
+        streamsx.spl.spl._EXTRACTING.active = False
 
 if __name__ == '__main__':
     main()

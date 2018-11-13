@@ -57,6 +57,9 @@ sub main::generate($$) {
    print '// flat map code is nothing.', "\n";
    print '#define SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(splv, pyv, occ)', "\n";
    print '    ', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '#include "splpy_sh.h"', "\n";
+   print '#endif', "\n";
    print "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
@@ -100,7 +103,7 @@ sub main::generate($$) {
     }
    print "\n";
    print "\n";
-   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, wrapfn);', "\n";
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, wrapfn);', "\n";
    print "\n";
     if ($pystyle_fn eq 'dict') { 
    print "\n";
@@ -129,7 +132,7 @@ sub main::generate($$) {
    print '}', "\n";
     } 
    print "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '   this->getContext().registerStateHandler(*this);', "\n";
    print '#endif', "\n";
    print '}', "\n";
@@ -154,7 +157,12 @@ sub main::generate($$) {
    print '  std::vector<OPort0Type> output_tuples; ', "\n";
    print '  ', "\n";
    print ' {', "\n";
-   print '  OptionalAutoLock stateLock(this);', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '  SPL::AutoMutex am(mutex_);', "\n";
+   print '#elif SPLPY_CALLABLE_STATEFUL == 1', "\n";
+   print '  SPL::AutoPortMutex am(mutex_, *this);', "\n";
+   print '#endif', "\n";
+   print "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
    # functional operator

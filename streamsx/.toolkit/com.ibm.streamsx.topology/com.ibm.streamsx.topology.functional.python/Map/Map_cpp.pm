@@ -56,6 +56,10 @@ sub main::generate($$) {
     my %cpp_tuple_types;
    print "\n";
    print "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '#include "splpy_sh.h"', "\n";
+   print '#endif', "\n";
+   print "\n";
    print '#define SPLPY_TUPLE_MAP(f, v, r, occ) \\', "\n";
    print '    streamsx::topology::Splpy::pyTupleMap(f, v, r)', "\n";
    print "\n";
@@ -99,7 +103,7 @@ sub main::generate($$) {
     }
    print "\n";
    print "\n";
-   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, wrapfn);', "\n";
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, wrapfn);', "\n";
    print "\n";
     if ($pystyle_fn eq 'dict') { 
    print "\n";
@@ -138,7 +142,7 @@ sub main::generate($$) {
    }
    print "\n";
    print "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '   this->getContext().registerStateHandler(*this);', "\n";
    print '#endif', "\n";
    print '}', "\n";
@@ -163,7 +167,11 @@ sub main::generate($$) {
    print '{', "\n";
    print '  OPort0Type otuple;', "\n";
    print '  {', "\n";
-   print '    OptionalAutoLock stateLock(this);', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '    SPL::AutoMutex am(mutex_);', "\n";
+   print '#elif SPLPY_CALLABLE_STATEFUL == 1', "\n";
+   print '    SPL::AutoPortMutex am(mutex_, *this);', "\n";
+   print '#endif', "\n";
    print '  ', "\n";
    print '    try {', "\n";
    print "\n";

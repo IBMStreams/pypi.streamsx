@@ -114,8 +114,7 @@ Use of a class instance allows the operation to be stateful by maintaining state
 attributes across invocations.
 
 .. note::
-    For future compatibility instances should ensure that the object's
-    state can be pickled. See https://docs.python.org/3.5/library/pickle.html#handling-stateful-objects
+    For support with consistent region or checkpointing instances should ensure that the object's state can be pickled. See https://docs.python.org/3.5/library/pickle.html#handling-stateful-objects
 
 Initialization and shutdown
 ===========================
@@ -203,12 +202,14 @@ try:
 except (ImportError,NameError):
     pass
 
+import streamsx._streams._version
+__version__ = streamsx._streams._version.__version__
+
 import copy
 import random
 import streamsx._streams._placement as _placement
 import streamsx.spl.op
 import streamsx.spl.types
-import streamsx.topology.consistent
 import streamsx.topology.graph
 import streamsx.topology.schema
 import streamsx.topology.functions
@@ -758,7 +759,7 @@ class Topology(object):
         if not self._has_jcp:
             jcp = self.graph.addOperator(kind="spl.control::JobControlPlane", name="JobControlPlane")
             jcp.viewable = False
-            self.has_jcp = True
+            self._has_jcp = True
 
 
 class Stream(_placement._Placement, object):

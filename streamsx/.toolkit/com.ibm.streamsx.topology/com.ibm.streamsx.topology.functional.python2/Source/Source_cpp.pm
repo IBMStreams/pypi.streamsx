@@ -10,6 +10,10 @@ sub main::generate($$) {
    SPL::CodeGen::implementationPrologue($model);
    print "\n";
    print "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '#include "splpy_sh.h"', "\n";
+   print '#endif', "\n";
+   print "\n";
     my $pywrapfunc='source_pickle'; 
    print "\n";
    print "\n";
@@ -42,9 +46,9 @@ sub main::generate($$) {
     }
    print "\n";
    print "\n";
-   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, wrapfn);', "\n";
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, wrapfn);', "\n";
    print "\n";
-   print '#if SPLPY_OP_STATEFUL == 1', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '   this->getContext().registerStateHandler(*this);', "\n";
    print '#endif', "\n";
    print '}', "\n";
@@ -82,7 +86,9 @@ sub main::generate($$) {
    print '        ConsistentRegionPermit crp(crc);', "\n";
    print '#endif', "\n";
    print '        {', "\n";
-   print '            OptionalAutoLock stateLock(this);', "\n";
+   print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
+   print '            SPL::AutoMutex am(mutex_);', "\n";
+   print '#endif', "\n";
    print '            try {', "\n";
    print '                SplpyGIL lock;', "\n";
    print '                Py_CLEAR(pyReturnVar);', "\n";
