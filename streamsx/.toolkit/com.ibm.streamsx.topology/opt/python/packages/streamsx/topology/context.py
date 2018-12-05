@@ -76,6 +76,7 @@ def submit(ctxtype, graph, config=None, username=None, password=None):
         SubmissionResult: Result of the submission. For details of what is contained see the :py:class:`ContextTypes`
         constant passed as `ctxtype`.
     """
+    streamsx._streams._version._mismatch_check(__name__)
     graph = graph.graph
 
     if not graph.operators:
@@ -395,10 +396,13 @@ class _DistributedSubmitter(_BaseSubmitter):
         "Set env vars from connection if set"
         env = super(_DistributedSubmitter, self)._get_java_env()
         if self._streams_connection is not None:
+            # Need to sure the environment matches the connection.
             sc = self._streams_connection
-            env.pop('STREAMS_DOMAIN_ID', None)
-            env.pop('STREAMS_USERNAME', None)
-            env.pop('STREAMS_PASSWORD', None)
+            if isinstance(sc._delegator, streamsx.rest_primitives._StreamsRestDelegator):
+                 env.pop('STREAMS_DOMAIN_ID', None)
+                 env.pop('STREAMS_INSTANCE_ID', None)
+            else:
+                 env['STREAMS_DOMAIN_ID'] = sc.get_domains()[0].id
             env['STREAMS_REST_URL'] = sc.resource_url
             env['STREAMS_USERNAME'] = sc.rest_client._username
             env['STREAMS_PASSWORD'] = sc.rest_client._password

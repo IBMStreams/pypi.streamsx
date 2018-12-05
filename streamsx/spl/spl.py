@@ -14,9 +14,6 @@ class methods are created by decorators provided by this module.
 The name of the function or callable class becomes the name of the
 operator.
 
-Once created the operators become part of a toolkit and may be used
-like any other SPL operator.
-
 A decorated function is a stateless operator while a decorated class
 is an optionally stateful operator.
 
@@ -27,6 +24,26 @@ These are the supported decorators that create an SPL operator:
     * :py:class:`@spl.map <map>` - Creates a operator that maps input tuples to output tuples.
     * :py:class:`@spl.for_each <for_each>` - Creates a operator that terminates a stream processing each tuple.
     * :py:class:`@spl.primitive_operator <primitive_operator>` - Creates an SPL primitive operator that has an arbitrary number of input and output ports.
+
+Decorated functions and classes must be located in the directory
+``opt/python/streams`` in the SPL toolkit. Each module in that directory
+will be inspected for operators during extraction. Each module defines
+the SPL namespace for its operators by the function ``spl_namespace``,
+for example::
+
+    from streamsx.spl import spl
+
+    def spl_namespace():
+        return 'com.example.ops'
+
+    @spl.map()
+    def Pass(*tuple_):
+        return tuple_
+
+creates a pass-through operator ``com.example.ops::Pass``.
+
+SPL primitive operators are created by executing the extraction script :ref:`spl-py-extract` against the SPL toolkit. Once created the operators become part
+of the toolkit and may be used like any other SPL operator.
 
 *******************************
 Python classes as SPL operators
@@ -855,8 +872,8 @@ class source(object):
     see :ref:`submit-from-python`.
     
     If the iteration completes then no more tuples
-    are submitted and a final punctuation mark
-    is submitted to the output port.
+    are submitted and a window punctuation mark followed
+    by final punctuation mark are submitted to the output port.
 
     Example definition::
 
@@ -876,6 +893,16 @@ class source(object):
                 stop: 100;
         }
 
+    If ``__iter__`` or ``__next__`` block then shutdown, checkpointing
+    or consistent region processing may be delayed. Having ``__next__``
+    return ``None`` (no available tuples) or tuples to submit
+    will allow such processing to proceed.
+
+    A shutdown ``threading.Event`` is available through
+    :py:func:`streamsx.ec.shutdown` which becomes set when a shutdown
+    of the processing element has been requested. This event my be waited
+    on to perform a sleep that will terminate upon shutdown.
+    
     Args:
        docpy: Copy Python docstrings into SPL operator model for SPLDOC.
 

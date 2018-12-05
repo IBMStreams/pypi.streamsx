@@ -84,6 +84,7 @@ class StreamsConnection:
     """
     def __init__(self, username=None, password=None, resource_url=None):
         """specify username, password, and resource_url"""
+        streamsx._streams._version._mismatch_check(__name__)
         if username and password:
             # resource URL can be obtained via streamtool geturl or REST call
             pass
@@ -104,6 +105,7 @@ class StreamsConnection:
         self.session = self.rest_client.session
         self._analytics_service = False
         self._delegator_impl = None
+        self._domains = None
 
     @property
     def _delegator(self):
@@ -118,15 +120,14 @@ class StreamsConnection:
         return self._resource_url
 
     def _get_elements(self, resource_name, eclass, id=None):
-        elements = []
         for resource in self.get_resources():
             if resource.name == resource_name:
+                elements = []
                 for json_element in resource.get_resource()[resource_name]:
                     if not _exact_resource(json_element, id):
                         continue
                     elements.append(eclass(json_element, self.rest_client))
-
-        return elements
+                return elements
 
     def _get_element_by_id(self, resource_name, eclass, id):
         """Get a single element matching an id"""
@@ -143,8 +144,10 @@ class StreamsConnection:
         Returns:
             :py:obj:`list` of :py:class:`~.rest_primitives.Domain`: List of available domains
         """
-        if hasattr(self, 'domains'):
-            return self._get_elements('domains', Domain)
+        # Domains are fixed and actually only one per REST api.
+        if self._domains is None:
+            self._domains = self._get_elements('domains', Domain)
+        return self._domains
 
     def get_domain(self, id):
         """Retrieves available domain matching a specific domain ID
@@ -158,8 +161,7 @@ class StreamsConnection:
         Raises:
             ValueError: No matching domain exists.
         """
-        if hasattr(self, 'domains'):
-            return self._get_element_by_id('domains', Domain, id)
+        return self._get_element_by_id('domains', Domain, id)
   
     def get_instances(self):
         """Retrieves available instances.
@@ -223,6 +225,7 @@ class StreamingAnalyticsConnection(StreamsConnection):
     .. seealso: :ref:`sas-access`
     """
     def __init__(self, vcap_services=None, service_name=None):
+        streamsx._streams._version._mismatch_check(__name__)
         self.service_name = service_name or os.environ.get('STREAMING_ANALYTICS_SERVICE_NAME')
         self.credentials = _get_credentials(_get_vcap_services(vcap_services), self.service_name)
         self._resource_url = None

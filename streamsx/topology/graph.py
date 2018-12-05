@@ -46,11 +46,18 @@ def _as_spl_expr(value):
     """ Return value converted to an SPL expression if
     needed other otherwise value.
     """
+    import streamsx._streams._numpy
+
     if hasattr(value, 'spl_json'):
         return value
       
     if isinstance(value, Enum):
         value = streamsx.spl.op.Expression.expression(value.name)
+
+    npcnv = streamsx._streams._numpy.as_spl_expr(value)
+    if npcnv is not None:
+        return npcnv
+    
     return value
 
 # Return a value suitable for use inthe JSON used to
