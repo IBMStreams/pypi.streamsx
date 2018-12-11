@@ -1,6 +1,6 @@
 To create a release:
 
-1. Modify `setup.py` to bump the version number as required (e.g. 0.4.0) (two places)
+1. Modify `setup.py` to bump the version number as required (e.g. 0.4.0) (two places). Ensure Development status classifier is correct (alpha/beta/production)
 1. Modify `build.xml` to change the release URL for the topology toolkit
 1. Execute `ant get_artifacts` to update the contents of the package
 1. `git add build/build.xml setup.py`

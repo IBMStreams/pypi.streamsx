@@ -315,15 +315,25 @@ class _Extractor(object):
 
          # Optionally include the Python source code
          if _opdoc(opobj):
+             decor = None
+             if inspect.isclass(opobj):
+                 if hasattr(opobj, '_splpy_decor'):
+                      decor = opobj._splpy_decor
+                 opobj = inspect.getmro(opobj)[1]
              try:
                  _pysrc = inspect.getsource(opobj)
                  opdoc += "\n"
                  opdoc += "# Python\n";
 
+                 if decor:
+                     opdoc += '    '
+                     opdoc += decor
+                     opdoc += '\n'
+
                  for _line in str.splitlines(_pysrc):
-                     opdoc += "    "
+                     opdoc += '    '
                      opdoc += html.escape(_line)
-                     opdoc += "\n"
+                     opdoc += '\n'
              except:
                  pass
          
@@ -420,9 +430,13 @@ class _Extractor(object):
 
     def _copy_python_dir(self, dir_):
         cmn_src = os.path.join(_topology_tk_dir(), "opt", "python", dir_);
-        cmn_dst = os.path.join(self._tk_dir, "opt", ".__splpy", os.path.basename(dir_))
-        if (os.path.isdir(cmn_dst)):
+        cmn_dst = os.path.join(self._tk_dir, "opt", ".splpy", os.path.basename(dir_))
+        if os.path.isdir(cmn_dst):
             shutil.rmtree(cmn_dst)
+        # Remove the old directory used - see #1997
+        old_dst = os.path.join(self._tk_dir, "opt", ".__splpy")
+        if os.path.isdir(old_dst):
+            shutil.rmtree(old_dst)
         shutil.copytree(cmn_src, cmn_dst)
 
     def _setup_info_xml(self, languageList):

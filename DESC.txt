@@ -4,10 +4,10 @@ IBM Cloud and on-premises IBM Streams.
  * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
  * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
-See `1.11.7 beta release notes <https://github.com/IBMStreams/streamsx.topology/releases/tag/v1.11.7_beta>`_ for details on new functionality in this release.
+See `1.11.8 release notes <https://github.com/IBMStreams/streamsx.topology/releases/tag/v1.11.8>`_ for details on new functionality in this release.
 
-Python Application API for Streams
-==================================
+Python Topology API for Streams
+===============================
 Module that allows the definition and execution of streaming
 applications implemented in Python. Applications use Python code to process
 tuples and tuples are Python objects.

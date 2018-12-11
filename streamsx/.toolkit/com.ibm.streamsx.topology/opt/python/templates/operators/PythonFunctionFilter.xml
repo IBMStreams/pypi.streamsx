@@ -9,21 +9,21 @@
       <description>
 __SPLPY__DESCRIPTION__SPLPY__
       </description>
-      <iconUri size="16">../../opt/.__splpy/icons/python-powered16.gif</iconUri>
-      <iconUri size="32">../../opt/.__splpy/icons/python-powered32.gif</iconUri>
+      <iconUri size="16">../../opt/.splpy/icons/python-powered16.gif</iconUri>
+      <iconUri size="32">../../opt/.splpy/icons/python-powered32.gif</iconUri>
       <metrics>
       </metrics>
       <libraryDependencies>
         <library>
           <cmn:description>SPLPY header</cmn:description>
           <cmn:managedLibrary>
-            <cmn:includePath>../../opt/.__splpy/include</cmn:includePath>
+            <cmn:includePath>../../opt/.splpy/include</cmn:includePath>
           </cmn:managedLibrary>
         </library>
         <library>
           <cmn:description>Python libraries.</cmn:description>
           <cmn:managedLibrary>
-            <cmn:command>../../opt/.__splpy/common/pyversion__SPLPY__MAJOR_VERSION__SPLPY__.sh</cmn:command>
+            <cmn:command>../../opt/.splpy/common/pyversion__SPLPY__MAJOR_VERSION__SPLPY__.sh</cmn:command>
           </cmn:managedLibrary>
         </library>
       </libraryDependencies>
@@ -48,6 +48,11 @@ __SPLPY__INPORT_0_DESCRIPTION__SPLPY__
     </inputPorts>
     <outputPorts>
       <outputPortSet>
+        <description>
+This filter operator is configurable with one or two output ports. This first output port is mandatory.
+
+This filter operator requires that the stream type of this output port matches the stream type of the input port. This output port receives the tuples that match the filter.
+        </description>
         <expressionMode>Nonexistent</expressionMode>
         <autoAssignment>true</autoAssignment>
         <completeAssignment>false</completeAssignment>
@@ -59,6 +64,11 @@ __SPLPY__INPORT_0_DESCRIPTION__SPLPY__
         <optional>false</optional>
       </outputPortSet>
       <outputPortSet>
+        <description>
+This filter operator is configurable with one or two output ports. This second output port is optional.
+
+This filter operator requires that the stream type of this output port matches the stream type of the input port. This output port, if present, receives the tuples that fail to match the filter.
+        </description>
         <expressionMode>Nonexistent</expressionMode>
         <autoAssignment>false</autoAssignment>
         <completeAssignment>false</completeAssignment>
