@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.2.1.1" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.2" version="1.11.9">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.2" version="1.11.10">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
