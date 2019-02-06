@@ -4,7 +4,7 @@ IBM Cloud and on-premises IBM Streams.
  * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
  * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
-See `1.11.8 release notes <https://github.com/IBMStreams/streamsx.topology/releases/tag/v1.11.8>`_ for details on new functionality in this release.
+See `1.12.1_alpha release notes <https://github.com/IBMStreams/streamsx.topology/releases/tag/v1.12.1_alpha>`_ for details on new functionality in this release.
 
 Python Topology API for Streams
 ===============================
@@ -12,7 +12,7 @@ Module that allows the definition and execution of streaming
 applications implemented in Python. Applications use Python code to process
 tuples and tuples are Python objects.
 
-See `streamsx.topology <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.11/pythondoc/streamsx.topology.html#module-streamsx.topology>`_
+See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/latest/streamsx.topology.html#module-streamsx.topology>`_
 
 Python callables as SPL operators
 =================================
@@ -22,7 +22,7 @@ to allow tuple processing using Python in an SPL application.
 SPL (Streams Processing Language) is a domain specific language for streaming
 analytics supported by IBM Streams.
 
-See `streamsx.spl <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.11/pythondoc/streamsx.spl.html#module-streamsx.spl>`_
+See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/latest/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
 
 Streams Python REST API
 =======================
@@ -30,11 +30,11 @@ Streams Python REST API
 Module that allows interaction with an running Streams instance or service
 through HTTPS REST APIs.
 
-See `streamsx.rest <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.11/pythondoc/streamsx.rest.html#module-streamsx.rest>`_
+See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/latest/streamsx.rest.html#module-streamsx.rest>`_
 
 Documentation
 =============
 
-`Full package documentation. <http://ibmstreams.github.io/streamsx.topology/doc/releases/1.11/pythondoc/index.html>`_
+`Full package documentation. <https://streamsxtopology.readthedocs.io/en/latest>`_
 
 
