@@ -82,10 +82,12 @@ class StreamsConnection:
     Attributes:
         session (:py:class:`requests.Session`): Requests session object for making REST calls.
     """
-    def __init__(self, username=None, password=None, resource_url=None):
+    def __init__(self, username=None, password=None, resource_url=None, auth=None):
         """specify username, password, and resource_url"""
         streamsx._streams._version._mismatch_check(__name__)
-        if username and password:
+        if auth:
+            pass
+        elif username and password:
             # resource URL can be obtained via streamtool geturl or REST call
             pass
         elif st._has_local_install:
@@ -100,7 +102,10 @@ class StreamsConnection:
             resource_url = os.environ['STREAMS_REST_URL']
         
         self._resource_url = resource_url
-        self.rest_client = _StreamsRestClient(username, password)
+        if auth:
+            self.rest_client = _StreamsRestClient(auth)
+        else:
+            self.rest_client = _StreamsRestClient._of_basic(username, password)
         self.rest_client._sc = self
         self.session = self.rest_client.session
         self._analytics_service = False
@@ -237,12 +242,13 @@ class StreamingAnalyticsConnection(StreamsConnection):
         if self._iam:
             self.rest_client = _IAMStreamsRestClient._create(self.credentials)
         else:
-            self.rest_client = _StreamsRestClient(self.credentials['userid'], self.credentials['password'])
+            self.rest_client = _StreamsRestClient._of_basic(self.credentials['userid'], self.credentials['password'])
         self.rest_client._sc = self
         self.session = self.rest_client.session
         self._analytics_service = True
         self._sas = StreamingAnalyticsService(self.rest_client, self.credentials)
         self._delegator_impl = self._sas._delegator
+        self._domains = None
 
     @staticmethod
     def of_definition(service_def):

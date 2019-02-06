@@ -28,7 +28,15 @@ import time
 from pprint import pformat
 from urllib import parse
 
+import streamsx.topology.context
 import streamsx.topology.schema
+import streamsx.rest
+
+##############################################################
+# NOTE verify is passed explictly when using session to
+# work around requests defect: #3829
+# https://github.com/requests/requests/issues/3829
+##############################################################
 
 logger = logging.getLogger('streamsx.rest')
 
@@ -138,48 +146,58 @@ class _ResourceElement(object):
             return elements[0]
         raise ValueError("Multiple resources matching: {0}".format(id))
 
+def _handle_http_errors(res):
+    # HTTP error responses are 4xx, server errors are 5xx
+    if res.status_code >= 400:
+        logger.error("Response returned with error code: " + str(res.status_code))
+        logger.error(res.text)
+        res.raise_for_status()
+
+
 class _StreamsRestClient(object):
+    _blocked_ssl_warn = False
+
     """Session connection with the Streams REST API
     """
-    def __init__(self, username, password):
+    def __init__(self, auth):
+        self.session = requests.Session()
+        self.session.auth = auth
+
+    def _block_ssl_warn(self):
+        if self.session.verify is False and not _StreamsRestClient._blocked_ssl_warn:
+            import warnings
+            import urllib3
+            warnings.simplefilter(action='once', category=urllib3.exceptions.InsecureRequestWarning)
+            _StreamsRestClient._blocked_ssl_warn = True
+
+    # Create session to reuse TCP connection
+    # https authentication
+    @staticmethod
+    def _of_basic(username, password):
         """
         Args:
             username(str): The username of an authorized Streams user.
             password(str): The password associated with the username.
         """
-        # Create session to reuse TCP connection
-        # https authentication
-        self._username = username
-        self._password = password
-
-        self.session = requests.Session()
-        self.session.auth = (username, password)
-        self._auth_token = requests.auth._basic_auth_str(self._username, self._password)
-
-    def _get_authorization(self):
-        return self._auth_token
-
-    def handle_http_errors(self, res):
-        # HTTP error responses are 4xx, server errors are 5xx
-        if res.status_code >= 400:
-            logger.error("Response returned with error code: " + str(res.status_code))
-            logger.error(res.text)
-            res.raise_for_status()
-
+        auth = (username, password)
+        return _StreamsRestClient(auth)
+    
     def make_request(self, url):
         logger.debug('Beginning a REST request to: ' + url)
-        res = self.session.get(url)
-        self.handle_http_errors(res)
+        self._block_ssl_warn()
+        headers={ 'Accept': 'application/json'}
+        res = self.session.get(url, headers=headers, verify=self.session.verify)
+        _handle_http_errors(res)
         return res.json()
 
     def make_raw_streaming_request(self, url, mimetype=None):
         logger.debug('Beginning a REST request to: ' + url)
+        self._block_ssl_warn()
         headers = {}
         if mimetype:
             headers['Accept'] = mimetype
-        res = self.session.get(url, stream=True, headers=headers)
-        self.handle_http_errors(res)
-
+        res = self.session.get(url, stream=True, headers=headers, verify=self.session.verify)
+        _handle_http_errors(res)
         return res
 
     def _retrieve_file(self, url, filename, dir_, mimetype):        
@@ -205,6 +223,65 @@ class _StreamsRestClient(object):
 
     def __str__(self):
         return pformat(self.__dict__)
+
+
+class _BearerAuthHandler(requests.auth.AuthBase):
+    def __init__(self, token):
+        self._bearer_token = 'Bearer ' + token
+
+    def __call__(self, r):
+        r.headers['Authorization'] = self._bearer_token
+        return r
+
+
+class _IAMAuthHandler(requests.auth.AuthBase):
+    def __init__(self, credentials):
+        """
+        Args:
+            credentials: The credentials of the Streaming Analytics service.
+        """
+        self._credentials = credentials
+        self._api_key = self._credentials[_IAMConstants.API_KEY]
+
+        # Represents the epoch time in milliseconds at which
+        # the token is no longer valid
+        # Starts at -1 such that the first invocation of a REST request
+        # Retrieves a token
+        self._auth_expiry_time = -1
+
+        # Determine if service is in production or staging/test
+        v2url = self._credentials[_IAMConstants.V2_REST_URL]
+
+        v2host = parse.urlparse(v2url).hostname
+        if v2host.endswith('test.cloud.ibm.com') or ('stage1' in v2host and v2host.endswith('.bluemix.net')):
+            self._token_url = _IAMConstants.TOKEN_URL_TEST
+        else:
+            self._token_url = _IAMConstants.TOKEN_URL
+
+    def __call__(self, r):
+        # Convert cur time to milliseconds
+        cur_time = int(time.time() * 1000)
+        if cur_time >= self._auth_expiry_time:
+            self._refresh_authorization()
+        r.headers['Authorization'] = self._bearer_token
+        return r
+
+    def _refresh_authorization(self):
+        post_url = self._token_url + '?' + self._get_token_params(self._api_key)
+        res = requests.post(post_url, headers = {'Accept' : 'application/json',
+                                                 'Content-Type' : 'application/x-www-form-urlencoded'})
+        _handle_http_errors(res)
+        res = res.json()
+
+        self._auth_expiry_time = int(res[_IAMConstants.EXPIRATION] * 1000) - _IAMConstants.EXPIRY_PAD_MS
+        self._bearer_token = self._create_bearer_auth(res[_IAMConstants.ACCESS_TOKEN])
+
+    def _create_bearer_auth(self, token):
+        return _IAMConstants.AUTH_BEARER_PREFIX + token
+
+    def _get_token_params(self, api_key):
+        return parse.urlencode({_IAMConstants.GRANT_PARAM : _IAMConstants.GRANT_TYPE,
+                                       _IAMConstants.API_KEY : api_key})
 
 
 
@@ -235,69 +312,7 @@ class _IAMStreamsRestClient(_StreamsRestClient):
         Args:
             credentials: The credentials of the Streaming Analytics service.
         """
-        self._credentials = credentials
-        self._api_key = self._credentials[_IAMConstants.API_KEY]
-
-        # Represents the epoch time in milliseconds at which
-        # the token is no longer valid
-        # Starts at -1 such that the first invocation of a REST request
-        # Retrieves a token
-        self._auth_expiry_time = -1
-
-        # Determine if service is in production or staging/test
-        v2url = self._credentials[_IAMConstants.V2_REST_URL]
-
-        v2host = parse.urlparse(v2url).hostname
-        if v2host.endswith('test.cloud.ibm.com') or ('stage1' in v2host and v2host.endswith('.bluemix.net')):
-            self._token_url = _IAMConstants.TOKEN_URL_TEST
-        else:
-            self._token_url = _IAMConstants.TOKEN_URL
-
-        self.session = requests.Session()
-
-    def _get_authorization(self):
-        # Convert cur time to milliseconds
-        cur_time = int(time.time() * 1000)
-        if cur_time >= self._auth_expiry_time:
-            self._refresh_authorization()
-        return self._bearer_token
-
-    def _refresh_authorization(self):
-        post_url = self._token_url + '?' + self._get_token_params(self._api_key)
-        res = requests.post(post_url, headers = {'Accept' : 'application/json',
-                                                 'Content-Type' : 'application/x-www-form-urlencoded'})
-        self.handle_http_errors(res)
-        res = res.json()
-
-        self._auth_expiry_time = int(res[_IAMConstants.EXPIRATION] * 1000) - _IAMConstants.EXPIRY_PAD_MS
-        self._bearer_token = self._create_bearer_auth(res[_IAMConstants.ACCESS_TOKEN])
-
-    def _create_bearer_auth(self, token):
-        return _IAMConstants.AUTH_BEARER_PREFIX + token
-
-    def _get_token_params(self, api_key):
-        return parse.urlencode({_IAMConstants.GRANT_PARAM : _IAMConstants.GRANT_TYPE,
-                                       _IAMConstants.API_KEY : api_key})
-
-    def make_request(self, url):
-        logger.debug('Beginning a REST request to: ' + url)
-        headers={'Authorization' : self._get_authorization(),
-                 'Accept': 'application/json'}
-        res = self.session.get(url, headers=headers)
-        self.handle_http_errors(res)
-        return res.json()
-
-    def make_raw_streaming_request(self, url, mimetype=None):
-        logger.debug('Beginning a REST request to: ' + url)
-        headers = {'Authorization' : self._get_authorization()}
-        if mimetype:
-            headers['Accept'] = mimetype
-        res = self.session.get(url, stream=True, headers=headers)
-        self.handle_http_errors(res)
-        return res
-
-    def __str__(self):
-        return pformat(self.__dict__)
+        super(_IAMStreamsRestClient, self).__init__(_IAMAuthHandler(credentials))
 
 
 class _ViewDataFetcher(object):
@@ -308,7 +323,12 @@ class _ViewDataFetcher(object):
         self.view = view
         self.tuple_getter = tuple_getter
         self.stop = threading.Event()
-        self.items = queue.Queue()
+        if view.bufferCapacityUnits == 'tuples':
+            self.items = queue.Queue(view.bufferCapacityTuples)
+        elif view.bufferCapacityUnits == 'seconds':
+            self.items = queue.Queue(view.bufferCapacitySeconds * view.maximumTupleRate)
+        else:
+            self.items = queue.Queue(10000)
 
         self._last_collection_time = -1
         self._last_collection_time_count = 0
@@ -317,7 +337,18 @@ class _ViewDataFetcher(object):
         while not self._stopped():
             _items = self._get_deduplicated_view_items() or []
             for itm in _items:
-                self.items.put(itm)
+                try:
+                    self.items.put(itm, block=False)
+                except queue.Full:
+                    # Pop an item (and discard)
+                    try:
+                        self.items.get(block=False)
+                    except queue.Empty:
+                        pass
+                    # Should not block as this should be
+                    # the only producer
+                    self.items.put(itm)
+              
             time.sleep(1)
 
     def _get_deduplicated_view_items(self):
@@ -452,21 +483,117 @@ class View(_ResourceElement):
     def stop_data_fetch(self):
         """Stops the thread that fetches data from the Streams view server.
         """
-        if self._data_fetcher is not None:
+        if self._data_fetcher:
             self._data_fetcher.stop.set()
             self._data_fetcher = None
 
     def start_data_fetch(self):
         """Starts a thread that fetches data from the Streams view server.
 
+        Each item in the returned `Queue` represents a single tuple
+        on the stream the view is attached to.
+        
         Returns:
             queue.Queue: Queue containing view data.
+
+        .. note:: This is a queue of the tuples coverted to Python
+            objects, it is not a queue of :py:class:`ViewItem` objects.
         """
         self.stop_data_fetch()
         self._data_fetcher = _ViewDataFetcher(self, self._tuple_fn)
         t = threading.Thread(target=self._data_fetcher)
         t.start()
         return self._data_fetcher.items
+
+    def fetch_tuples(self, max_tuples=20, timeout=None):
+        """
+        Fetch a number of tuples from this view.
+
+        Fetching of data must have been started with
+        :py:meth:`start_data_fetch` before calling this method.
+
+        If ``timeout`` is ``None`` then the returned list will
+        contain ``max_tuples`` tuples. Otherwise if the timeout is reached
+        the list may contain less than ``max_tuples`` tuples.
+
+        Args:
+            max_tuples(int): Maximum number of tuples to fetch.
+            timeout(float): Maximum time to wait for ``max_tuples`` tuples.
+
+        Returns:
+            list: List of fetched tuples.
+        .. versionadded:: 1.12
+        """
+        tuples = list()
+        if timeout is None:
+            while len(tuples) < max_tuples:
+                fetcher = self._data_fetcher
+                if not fetcher:
+                    break
+                tuples.append(fetcher.items.get())
+            return tuples
+
+        timeout = float(timeout)
+        end = time.time() + timeout
+        while len(tuples) < max_tuples:
+            qto = end - time.time()
+            if qto <= 0:
+                break
+            try:
+                fetcher = self._data_fetcher
+                if not fetcher:
+                    break
+                tuples.append(fetcher.items.get(timeout=qto))
+            except queue.Empty:
+                break
+        return tuples
+
+    def display(self, duration=None, period=2):
+        """Display a view within an Jupyter or IPython notebook.
+
+        Provides an easy mechanism to visualize data on a stream
+        using a view.
+
+        Tuples are fetched from the view and displayed in a table
+        within the notebook cell using a ``pandas.DataFrame``.
+        The table is continually updated with the latest tuples from the view.
+
+        This method calls :py:meth:`start_data_fetch` and will call
+        :py:meth:`stop_data_fetch` when completed if `duration` is set.
+
+        Args:
+            duration(float): Number of seconds to fetch and display tuples. If ``None`` then the display will be updated until :py:meth:`stop_data_fetch` is called.
+            period(float): Maximum update period.
+
+        .. note::
+            A view is a sampling of data on a stream so tuples that
+            are on the stream may not appear in the view.
+
+        .. warning::
+            Behavior when called outside a notebook is undefined.
+
+        .. versionadded:: 1.12
+        """
+        import ipywidgets as widgets
+        vn = widgets.Text(value=self.description, description=self.name, disabled=True)
+        out = widgets.Output(layout={'border': '1px solid black'})
+        vb = widgets.VBox([vn, out])
+        display(vb)
+        self._display_thread = threading.Thread(target=lambda: self._display(out, duration, period))
+        self._display_thread.start()
+        
+    def _display(self, out, duration, period):
+        import pandas as pd
+        import IPython
+        self.start_data_fetch()
+        end = time.time() + float(duration) if duration is not None else None
+        max_rows = pd.options.display.max_rows
+        with out:
+            while self._data_fetcher and (duration is None or time.time() < end):
+                tuples = self.fetch_tuples(max_rows, period)
+                display(pd.DataFrame(tuples))
+                out.clear_output(wait=True)
+        self.stop_data_fetch()
 
     def get_view_items(self):
         """Get a list of :py:class:`ViewItem` elements associated with this view.
@@ -1241,6 +1368,22 @@ class Instance(_ResourceElement):
         super(Instance, self).__init__(json_rep, rest_client)
         self._delegator = rest_client._sc._delegator
 
+    @staticmethod
+    def of_service(cfg):
+        service = cfg.get(streamsx.topology.context.ConfigParams.SERVICE_DEFINITION, cfg)
+        endpoint = service['connection_info'].get('serviceRestEndpoint')
+        if not endpoint:
+            raise ValueError()
+        es = endpoint.split('/')
+        name = es[len(es)-1]
+        root_url = endpoint.split('/streams/rest/instances/')[0]
+        resource_url = root_url + '/streams/rest/resources'
+
+        sc = streamsx.rest.StreamsConnection(resource_url=resource_url, auth=_BearerAuthHandler(service['bearerToken']))
+        if streamsx.topology.context.ConfigParams.SSL_VERIFY in cfg:
+                sc.session.verify = cfg[streamsx.topology.context.ConfigParams.SSL_VERIFY]
+        return sc.get_instance(name)
+
     def get_operators(self, name=None):
         """Get the list of :py:class:`Operator` elements associated with this instance.
 
@@ -1468,6 +1611,40 @@ class Instance(_ResourceElement):
         .. versionadded:: 1.11
         """
         return self.upload_bundle(bundle).submit_job(job_config)
+
+    def get_application_configurations(self, name=None):
+        """Retrieves application configurations for this instance.
+
+        Args:
+            name (str, optional): Only return application configurations containing property **name** that matches `name`. `name` can be a
+                regular expression. If `name` is not supplied, then all application configurations are returned.
+
+        Returns:
+            list(ApplicationConfiguration): A list of application configurations matching the given `name`.
+        
+        .. versionadded 1.12
+        """
+        if hasattr(self, 'applicationConfigurations'):
+           return self._get_elements(self.applicationConfigurations, 'applicationConfigurations', ApplicationConfiguration, None, name)
+
+    def create_application_configuration(self, name, properties, description=None):
+        """Create an application configuration.
+
+        Args:
+            name (str, optional): Only return application configurations containing property **name** that matches `name`. `name` can be a
+        .. versionadded 1.12
+        """
+        if not hasattr(self, 'applicationConfigurations'):
+            raise NotImplementedError()
+
+        cv = ApplicationConfiguration._props(name, properties, description)
+
+        res = self.rest_client.session.post(self.applicationConfigurations,
+            headers = {'Accept' : 'application/json'},
+            json=cv)
+        _handle_http_errors(res)
+        return ApplicationConfiguration(res.json(), self.rest_client)
+
 
 class ResourceTag(object):
     """Resource tag defined in a Streams domain
@@ -1760,9 +1937,9 @@ class _StreamingAnalyticsServiceV2Delegator(object):
                 ('job_options', ('job_options', json.dumps(job_options), 'application/json'))
                 ]
             res = self.rest_client.session.post(self._get_jobs_url(),
-                headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json'},
+                headers = {'Accept' : 'application/json'},
                 files=files)
-            self.rest_client.handle_http_errors(res)
+            _handle_http_errors(res)
             return res.json()
 
 
@@ -1773,7 +1950,7 @@ class _StreamingAnalyticsServiceV2Delegator(object):
         if job_id is None:
             # Get the job id using the job name, since it's required by the REST API
             res = self.rest_client.make_request(self.get_jobs_url())
-            self.rest_client.handle_http_errors(res)
+            _handle_http_errors(res)
             for job in res['resources']:
                 if job['name'] == job_name:
                     # Find the correct job_id, set it
@@ -1781,26 +1958,24 @@ class _StreamingAnalyticsServiceV2Delegator(object):
 
         # Cancel the job using the job id
         cancel_url = self._get_jobs_url() + '/' + str(job_id)
-        headers = {'Authorization' : self.rest_client._get_authorization(),
-                  'Accept' : 'application/json'}
+        headers = { 'Accept' : 'application/json'}
         res = self.rest_client.session.delete(cancel_url, headers=headers)
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
     def start_instance(self):
         res = self.rest_client.session.patch(self._v2_rest_url, json={'state' : 'STARTED'},
-                               headers = {'Authorization' : self.rest_client._get_authorization(),
+                               headers = {
                                           'Content-Type' : 'application/json',
                                           'Accept' : 'application/json'})
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
     def stop_instance(self):
         res = self.rest_client.session.patch(self._v2_rest_url, json={'state' : 'STOPPED'},
-                               headers = {'Authorization' : self.rest_client._get_authorization(),
-                                          'Content-Type' : 'application/json',
+                               headers = { 'Content-Type' : 'application/json',
                                           'Accept' : 'application/json'})
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
     def get_instance_status(self):
@@ -1870,7 +2045,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
 
         jobs_url = self._get_url('jobs_path')
         res = self.rest_client.session.delete(jobs_url, params=payload)
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
     def start_instance(self):
@@ -1881,7 +2056,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
         """
         start_url = self._get_url('start_path')
         res = self.rest_client.session.put(start_url, json={})
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
     def stop_instance(self):
@@ -1892,7 +2067,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
         """
         stop_url = self._get_url('stop_path')
         res = self.rest_client.session.put(stop_url, json={})
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
     def get_instance_status(self):
@@ -1903,7 +2078,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
         """
         status_url = self._get_url('status_path')
         res = self.rest_client.session.get(status_url)
-        self.rest_client.handle_http_errors(res)
+        _handle_http_errors(res)
         return res.json()
 
 class _IAMConstants(object):
@@ -2029,6 +2204,70 @@ class _UploadedBundle(ApplicationBundle):
     def _app_id(self):
         return self.bundleId
 
+class ApplicationConfiguration(_ResourceElement):
+    """An application configuration.
+   
+    Application configurations are used for secure storage and
+    retrieval of name/value pairs.
+
+    An application configuration maintains a set of properties
+    that an application can access at runtime. These are typically
+    used to maintain connection endpoint and credentials for sources
+    and sinks.
+
+    Attributes:
+        name (str): Name of the configuration.
+        description (str): Description for the configuration.
+        properties (dict): Property values stored for the configuration.
+        creationTime (long): Epoch time when this configuraiton was created.
+        lastModifiedTime (long): Epoch time when this configuration was last modified.
+
+    .. versionadded 1.12
+    """
+    @staticmethod
+    def _props(name=None, properties=None, description=None):
+        cv = {}
+        if name:
+            cv['name'] = str(name)
+        if description:
+            cv['description'] = str(description)
+        acp = {}
+        for k,v in properties.items():
+            acp[str(k)] = None if v is None else str(v)
+        cv['properties'] = acp
+        return cv
+
+    def update(self, properties=None, description=None):
+        """Update this application configuration.
+
+        To create or update a property provide its key-value
+        pair in `properties.
+
+        To delete a property provide its key with the value ``None``
+        in properties.
+
+        Args:
+            properties (dict): Property values to be updated. If ``None`` the properties are unchanged.
+            description (str): Description for the configuration. If ``None`` the description is unchanged.
+
+        Returns:
+            ApplicationConfiguration: self
+        """
+        cv = ApplicationConfiguration._props(properties=properties, description=description)
+        res = self.rest_client.session.patch(self.rest_self,
+            headers = {'Accept' : 'application/json',
+                       'Content-Type' : 'application/json'},
+            json=cv)
+        _handle_http_errors(res)
+        self.json_rep = res.json()
+        return self
+
+    def delete(self):
+        """Delete this application configuration.
+        """
+        res = self.rest_client.session.delete(self.rest_self)
+        _handle_http_errors(res)
+
 
 class _StreamsRestDelegator(object):
     """Delegator for IBM Streams instances where the
@@ -2038,24 +2277,28 @@ class _StreamsRestDelegator(object):
         self.rest_client = rest_client
 
     def _upload_bundle(self, instance, bundle):
+        self.rest_client._block_ssl_warn()
         app_bundle_url = instance.self + '/applicationbundles'
 
         sab_name = os.path.basename(bundle)
         with open(bundle, 'rb') as bundle_fp:
             res = self.rest_client.session.post(app_bundle_url,
-                headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json', 'Content-Type': 'application/x-jar'},
-                data=bundle_fp)
-            self.rest_client.handle_http_errors(res)
+                headers = {'Accept' : 'application/json', 'Content-Type': 'application/x-jar'},
+                data=bundle_fp,
+                verify=self.rest_client.session.verify)
+            _handle_http_errors(res)
             if res.status_code != 200:
                 raise ValueError(str(res))
             return _UploadedBundle(self, instance, res.json(), self.rest_client)
 
     def _submit_bundle(self, bundle, job_config):
+        self.rest_client._block_ssl_warn()
         job_options = job_config.as_overlays() if job_config else {}
         app_id = bundle._app_id()
         res = self.rest_client.session.post(bundle._instance.jobs,
-           headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json'}, json={'application': app_id, 'jobConfigurationOverlay':job_options, 'preview':False})
-        self.rest_client.handle_http_errors(res)
+            headers = {'Accept' : 'application/json'}, json={'application': app_id, 'jobConfigurationOverlay':job_options, 'preview':False},
+            verify=self.rest_client.session.verify)
+        _handle_http_errors(res)
         if res.status_code != 201:
             raise ValueError(str(res))
         location = res.headers['Location']
@@ -2064,7 +2307,9 @@ class _StreamsRestDelegator(object):
         return job.id
 
     def _cancel_job(self, job, force):
+        self.rest_client._block_ssl_warn()
         cancel_url = job.instance + '/jobs/' + job.id
         res = self.rest_client.session.delete(cancel_url,
-                headers = {'Authorization' : self.rest_client._get_authorization(), 'Accept' : 'application/json'})
+                headers = {'Accept' : 'application/json'},
+                verify=self.rest_client.session.verify)
         #TODO return code

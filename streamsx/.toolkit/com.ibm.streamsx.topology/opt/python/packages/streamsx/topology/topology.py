@@ -374,6 +374,9 @@ class Topology(object):
                     namespace = si[2].__module__
                 elif si[0] is not None:
                     namespace = os.path.splitext(os.path.basename(si[0]))[0]
+                    if namespace.startswith('<ipython-input'):
+                        if 'DSX_PROJECT_NAME' in os.environ:
+                            namespace = os.environ['DSX_PROJECT_NAME']
         
         if sys.version_info.major == 3:
           self.opnamespace = "com.ibm.streamsx.topology.functional.python"
@@ -523,6 +526,7 @@ class Topology(object):
 
         .. seealso:`SubscribeConnection`
         """
+        schema = streamsx.topology.schema._normalize(schema)
         _name = self.graph._requested_name(name, 'subscribe')
         sl = _SourceLocation(_source_info(), "subscribe")
         # subscribe is never stateful
@@ -922,6 +926,7 @@ class Stream(_placement._Placement, object):
         return Stream(self.topology, oport)._make_placeable()
 
     def _map(self, func, schema, name=None):
+        schema = streamsx.topology.schema._normalize(schema)
         _name = self.topology.graph._requested_name(name, action="map", func=func)
         stateful = self._determine_statefulness(func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Map", func, name=_name, stateful=stateful)
@@ -937,11 +942,13 @@ class Stream(_placement._Placement, object):
 
         A view is a continually updated sampled buffer of a streams's tuples.
         Views allow visibility into a stream from external clients such
-        as the Streams console,
+        as Jupyter Notebooks, the Streams console,
         `Microsoft Excel <https://www.ibm.com/support/knowledgecenter/SSCRJU_4.2.0/com.ibm.streams.excel.doc/doc/excel_overview.html>`_ or REST clients.
 
         The view created by this method can be used by external clients
-        and through the returned object after the topology is submitted. 
+        and through the returned :py:class:`~streamsx.topology.topology.View` object after the topology is submitted. For example a Jupyter Notebook can
+        declare and submit an application with views, and then
+        use the resultant `View` objects to visualize live data within the streams.
 
         When the stream contains Python objects then they are converted
         to JSON.
@@ -956,8 +963,11 @@ class Stream(_placement._Placement, object):
                 remote client accesses it to retrieve data.
  
         Returns:
-            View object which can be used to access the data when the
+            streamsx.topology.topology.View: View object which can be used to access the data when the
             topology is submitted.
+
+        .. note:: Views are only supported when submitting to distributed
+            contexts including Streaming Analytics service.
         """
         if name is None:
             name = ''.join(random.choice('0123456789abcdef') for x in range(16))
@@ -998,16 +1008,17 @@ class Stream(_placement._Placement, object):
         `schema` parameter changes the type of the stream and
         modifies each ``result`` before submission.
 
-        * :py:const:`~streamsx.topology.schema.CommonSchema.Python` - The default:  `result` is submitted.
-        * :py:const:`~streamsx.topology.schema.CommonSchema.String` - A stream of strings: ``str(result)`` is submitted.
-        * :py:const:`~streamsx.topology.schema.CommonSchema.Json` - A stream of JSON objects: ``result`` must be convertable to a JSON object using `json` package.
+        * ``object`` or :py:const:`~streamsx.topology.schema.CommonSchema.Python` - The default:  `result` is submitted.
+        * ``str`` type (``unicode`` 2.7) or :py:const:`~streamsx.topology.schema.CommonSchema.String` - A stream of strings: ``str(result)`` is submitted.
+        * ``json`` or :py:const:`~streamsx.topology.schema.CommonSchema.Json` - A stream of JSON objects: ``result`` must be convertable to a JSON object using `json` package.
         * :py:const:`~streamsx.topology.schema.StreamSchema` - A structured stream. `result` must be a `dict` or (Python) `tuple`. When a `dict` is returned the outgoing stream tuple attributes are set by name, when a `tuple` is returned stream tuple attributes are set by position.
+        * string value - Equivalent to passing ``StreamSchema(schema)``
 
         Args:
             func: A callable that takes a single parameter for the tuple.
                 If not supplied then a function equivalent to ``lambda tuple_ : tuple_`` is used.
             name(str): Name of the mapped stream, defaults to a generated name.
-            schema(StreamSchema): Schema of the resulting stream.
+            schema(StreamSchema|CommonSchema|str): Schema of the resulting stream.
 
         If invoking ``func`` for a tuple on the stream raises an exception
         then its processing element will terminate. By default the processing
@@ -1380,7 +1391,7 @@ class Stream(_placement._Placement, object):
         ::
 
             # Create batches against stream s every five minutes
-            w = s.last(size=datetime.timedelta(minutes=5))
+            w = s.batch(size=datetime.timedelta(minutes=5))
 
         Args:
             size: The size of each batch, either an `int` to define the
@@ -1492,6 +1503,7 @@ class Stream(_placement._Placement, object):
             Now returns a :py:class:`Sink` instance.
         """
         sl = _SourceLocation(_source_info(), 'publish')
+        schema = streamsx.topology.schema._normalize(schema)
         if schema is not None and self.oport.schema.schema() != schema.schema():
             nc = None
             if schema == streamsx.topology.schema.CommonSchema.Json:
@@ -1639,18 +1651,18 @@ class Stream(_placement._Placement, object):
 
 class View(object):
     """
-    The View class provides access to a continuously updated sampling of data items on a Stream after submission.
-    A view object is produced by the view method, and will access data items from the stream on which it is invoked.
+    The View class provides access to a continuously updated sampling of data items on a :py:class:`Stream` after submission.
+    A view object is produced by :py:meth:`~Stream.view`, and will access data items from the stream on which it is invoked.
 
-    For example, a View object could be created and used as follows:
+    For example, a `View` object could be created and used as follows:
 
         >>> topology = Topology()
-        >>> rands = topology.source(lambda: random.random())
+        >>> rands = topology.source(lambda: iter(random.random, None))
         >>> view = rands.view()       
         >>> submit(ContextTypes.DISTRIBUTED, topology)
         >>> queue = view.start_data_fetch()
         >>> for val in iter(queue.get, None):
-        ... print(val)
+        ...     print(val)
         ...
         0.6527
         0.1963
@@ -1662,16 +1674,18 @@ class View(object):
 
         self._view_object = None
         self._submit_context = None
-        self._streams_connection = None
+        self._job = None
 
-    def initialize_rest(self):
+    def _initialize_rest(self):
         """Used to initialize the View object on first use.
         """
-        if self._streams_connection is None:
+        if self._job is None:
             if self._submit_context is None:
                 raise ValueError("View has not been created.")
+            self._job = self._submit_context._job_access()
 
-            self._streams_connection = self._submit_context.streams_connection()
+        if self._view_object is None:
+            self._view_object = self._job.get_views(name=self.name)[0]
 
     def stop_data_fetch(self):
         """Terminates the background thread fetching stream data items.
@@ -1683,15 +1697,60 @@ class View(object):
         The data items are placed asynchronously in a queue, which is returned from this method.
 
         Returns:
-            A Queue object which is populated with the data items of the stream.
+            queue.Queue: A Queue object which is populated with the data items of the stream.
         """
-        self.initialize_rest()
-        sc = self._streams_connection
-        instance = sc.get_instance(id=self._submit_context.submission_results['instanceId'])
-        job = instance.get_job(id=self._submit_context.submission_results['jobId'])
-        self._view_object = job.get_views(name=self.name)[0]
-
+        self._initialize_rest()
         return self._view_object.start_data_fetch()
+
+    def fetch_tuples(self, max_tuples=20, timeout=None):
+        """
+        Fetch a number of tuples from this view.
+
+        Fetching of data must have been started with
+        :py:meth:`start_data_fetch` before calling this method.
+
+        If ``timeout`` is ``None`` then the returned list will
+        contain ``max_tuples`` tuples. Otherwise if the timeout is reached
+        the list may contain less than ``max_tuples`` tuples.
+
+        Args:
+            max_tuples(int): Maximum number of tuples to fetch.
+            timeout(float): Maximum time to wait for ``max_tuples`` tuples.
+
+        Returns:
+            list: List of fetched tuples.
+        .. versionadded:: 1.12
+        """
+        return self._view_object.fetch_tuples(max_tuples, timeout)
+
+    def display(self, duration=None, period=2):
+        """Display a view within an Jupyter or IPython notebook.
+
+        Provides an easy mechanism to visualize data on a stream
+        using a view.
+
+        Tuples are fetched from the view and displayed in a table
+        within the notebook cell using a ``pandas.DataFrame``.
+        The table is continually updated with the latest tuples from the view.
+
+        This method calls :py:meth:`start_data_fetch` and will call
+        :py:meth:`stop_data_fetch` when completed if `duration` is set.
+
+        Args:
+            duration(float): Number of seconds to fetch and display tuples. If ``None`` then the display will be updated until :py:meth:`stop_data_fetch` is called.
+            period(float): Maximum update period.
+
+        .. note::
+            A view is a sampling of data on a stream so tuples that
+            are on the stream may not appear in the view.
+
+        .. warning::
+            Behavior when called outside a notebook is undefined.
+
+        .. versionadded:: 1.12
+        """
+        self._initialize_rest()
+        return self._view_object.display(duration, period)
 
 
 class PendingStream(object):

@@ -1,9 +1,9 @@
 # SPL_CGT_INCLUDE: ../pyspltuple2tuple.cgt
-# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
-# SPL_CGT_INCLUDE: ../pyspltuple.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2value.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_pyTupleTosplTuple.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple_constructor.cgt
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_splTupleCheckForBlobs.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
 package Map_cpp;
