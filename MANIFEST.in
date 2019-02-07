@@ -1,2 +1,3 @@
 recursive-include streamsx/.toolkit *
+include streamsx/topology/logging.properties
 
