@@ -245,12 +245,10 @@ class _BearerAuthHandler(requests.auth.AuthBase):
         # Convert cur time to milliseconds
         cur_time = time.time()
         if cur_time >= self._auth_expiry_time:
-            print('DDDD:', 'REFRESHING TOKEN')
             last = self._auth_expiry_time
             if last == 0:
                 last = time.time()
             self._refresh_auth()
-            print('DDDD:', 'REFRESHED TOKEN', str(self._auth_expiry_time - last))
         r.headers['Authorization'] = self.token
         return r
 
@@ -2301,7 +2299,7 @@ class ApplicationConfiguration(_ResourceElement):
         """Update this application configuration.
 
         To create or update a property provide its key-value
-        pair in `properties.
+        pair in `properties`.
 
         To delete a property provide its key with the value ``None``
         in properties.
