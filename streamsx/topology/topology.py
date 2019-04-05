@@ -546,6 +546,46 @@ class Topology(object):
         op._layout_group('Subscribe', name if name else _name)
         return Stream(self, oport)._make_placeable()
 
+    def subscribe_to_connection(self, connection, name=None):
+        """
+        Subscribe to a topic published by other Streams applications. 
+        The connection information parameter must be a dictionary that contains the information about 
+        the stream to connect to.
+
+        see also: :py:meth:`~subscribe` 
+
+        The connection dictionary:
+        {
+            'topic': topic(str),                                      # Topic to subscribe to.
+            'schema': schema(~streamsx.topology.schema.StreamSchema), # schema to subscribe to.
+            'connection_mode': connect(SubscribeConnection),          # How subscriber will be connected to matching publishers. Defaults to :py:const:`~SubscribeConnection.Direct` connection.
+            'buffer_capacity': buffer_capacity(int),                  # Buffer capacity in tuples when `connect` is set to :py:const:`~SubscribeConnection.Buffered`. Defaults to 1000 when `connect` is `Buffered`. Ignored when `connect` is `None` or `Direct`.
+            'buffer_full_policy': buffer_full_policy(~streamsx.types.CongestionPolicy) # Policy when a pulished tuple arrives and the subscriber's buffer is full. Defaults to `Wait` when `connect` is `Buffered`. Ignored when `connect` is `None` or `Direct`.
+        }
+
+        Args:
+            connection(dict): A dictionary with the required connection information
+            name(str): Name of the subscribed stream, defaults to a generated name.
+        
+        Returns:
+            Stream:  A stream whose tuples have been published to the topic by other Streams applications.
+        """
+        my_topic = connection['topic']
+        my_schema = streamsx.topology.schema.CommonSchema.Python
+        if 'schema' in connection:
+            my_schema = connection['schema']
+        my_connection_mode  = None
+        if 'connection_mode' in connection:
+            my_connection_mode = connection['connection_mode']
+        my_buffer_capacity = None
+        if 'buffer_capacity' in connection:
+            my_buffer_capacity = connection['buffer_capacity']
+        my_buffer_full_policy = None
+        if 'buffer_full_policy' in connection:
+            my_buffer_full_policy = connection['buffer_full_policy']
+        
+        return self.subscribe(my_topic, schema=my_schema, name=name, connect=my_connection_mode, buffer_capacity=my_buffer_capacity, buffer_full_policy=my_buffer_full_policy)
+    
     def add_file_dependency(self, path, location):
         """
         Add a file or directory dependency into an Streams application bundle.
@@ -1536,6 +1576,37 @@ class Stream(_placement._Placement, object):
         if self._placeable:
             self._colocate(sink, 'publish')
         return sink
+
+    def publish_to_connection(self, connection, name=None):
+        """
+        Publish this stream on a topic for other Streams applications to subscribe to.
+        A Streams application may publish a stream to allow other
+        Streams applications to subscribe to it. A subscriber
+        matches a publisher if the topic and schema match.
+        The connection information parameter must be a dictionary that contains the information about 
+        the stream to publish.
+        
+        see also: :py:meth:`~publish`
+         
+        The connection dictionary:
+        {
+            'topic': topic(str),                                      # Topic to publish this stream to.
+            'schema': schema(~streamsx.topology.schema.StreamSchema), # Schema to publish. Defaults to the schema of this stream.
+        }
+
+        Args:
+            connection(dict): A dictionary with the required connection information
+            name(str): Name of the publish operator, defaults to a generated name.
+
+        Returns:
+            streamsx.topology.topology.Sink: Stream termination.
+        """
+        my_topic = connection['topic']
+        my_schema = None
+        if 'schema' in connection:
+            my_schema = connection['schema']
+        
+        return self.publish(my_topic, schema=my_schema, name=name)
 
     def autonomous(self):
         """
