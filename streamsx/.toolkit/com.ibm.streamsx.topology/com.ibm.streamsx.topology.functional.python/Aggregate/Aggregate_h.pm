@@ -79,10 +79,84 @@ sub main::generate($$) {
    }  
    print "\n";
    print "\n";
+   print '/*', "\n";
+   print 'There are four preprocessor symbols that control whether and how the ', "\n";
+   print 'window is partitioned:', "\n";
+   print "\n";
+   print 'SPLPY_PARTITION_BY_ATTRIBUTE', "\n";
+   print 'If this is 1, the window is partitioned by a single attribute in the ', "\n";
+   print 'schema of the input tuple.  This requires a structured schema.', "\n";
+   print "\n";
+   print 'SPLPY_PARTITION_BY_PYTHON', "\n";
+   print 'If this is 1, the window is partitioned by a python callable.  It may', "\n";
+   print 'be the name and module of a python callable object, or a serialized', "\n";
+   print 'python callable.', "\n";
+   print "\n";
+   print 'SPLPY_PARTITION_BY_CALLABLE', "\n";
+   print 'If this is 1, the window is partitioned using a serialized python callable', "\n";
+   print 'object.  If this is 1, SPLPY_PARTITION_BY_PYTHON will also always be 1.', "\n";
+   print "\n";
+   print 'SPLPY_PARTITION_IS_STATEFUL', "\n";
+   print 'If this is 1, the python callable object has a state, and the state should', "\n";
+   print 'be saved and restored if checkpointing is enabled.  If this is 1, ', "\n";
+   print 'SPLPY_PARTITION_BY_PYTHON will also be 1.', "\n";
+   print '*/', "\n";
+   print "\n";
    # Configure Windowing
     my $inputPort = $model->getInputPortAt(0); 
     my $window = $inputPort->getWindow();
-    my $windowCppType = SPL::CodeGen::getWindowCppType($window,"PyObject *");
+   
+    my $partitionByParam = $model->getParameterByName("pyPartitionBy");
+    my @partitionByTypes = SPL::CodeGen::getParameterCppTypes($partitionByParam);
+    my $windowCppType;
+    my $windowEventCppType;
+    my $partitionParamName;
+    if ($partitionByParam) {
+      if (scalar @partitionByTypes > 1) {
+        SPL::CodeGen::exitln('Only a single partition attribute is allowed.');
+      }
+      else {
+   print "\n";
+   print '#define SPLPY_PARTITION_BY_ATTRIBUTE 1', "\n";
+        my $partitionByType = $partitionByTypes[0];
+        $windowCppType = SPL::CodeGen::getWindowCppType($window, "PyObject *", $partitionByType);
+   
+        $windowEventCppType = SPL::CodeGen::getWindowEventCppType($window, "PyObject *", $partitionByType);
+   
+        # Validate that the tuple type contains an attribute with name 
+        # matching $partitionByParam
+        $partitionParamName = substr $partitionByParam->getValueAt(0)->getSPLExpression(), 1, -1;
+        if (! $inputPort->getAttributeByName($partitionParamName)) {
+        	SPL::CodeGen::exitln("The input port does not contain the parameter \"$partitionParamName\", which has been specified for partitioning");
+        }
+      }
+    }
+    else {
+   print "\n";
+   print '#define SPLPY_PARTITION_BY_ATTRIBUTE 0', "\n";
+      $windowCppType = SPL::CodeGen::getWindowCppType($window,"PyObject *");
+      $windowEventCppType = SPL::CodeGen::getWindowEventCppType($window,"PyObject *");
+    }    
+    my $partitionIsStateful = 0;
+    my $partitionByName = $model->getParameterByName("pyPartitionByName");
+    my $partitionByCallable = $model->getParameterByName("pyPartitionByCallable");
+    if ($partitionByName) {
+        $windowCppType = SPL::CodeGen::getWindowCppType($window, "PyObject *", "PyObject *");
+   
+        $windowEventCppType = SPL::CodeGen::getWindowEventCppType($window, "PyObject *", "PyObject *");
+   
+        my $partitionIsStatefulValue = $model->getParameterByName("pyPartitionIsStateful")->getValueAt(0);
+        $partitionIsStateful = SPL::CodeGen::extractPerlValue($partitionIsStatefulValue->getCppExpression(), $partitionIsStatefulValue->getSPLType());
+   print "\n";
+   print '#define SPLPY_PARTITION_BY_PYTHON 1', "\n";
+   print '#define SPLPY_PARTITION_IS_STATEFUL ';
+   print $partitionIsStateful;
+   print "\n";
+    }
+    if ($partitionByCallable) {
+   print "\n";
+   print '#define SPLPY_PARTITION_BY_CALLABLE 1', "\n";
+    }   
    print "\n";
    print "\n";
    print '#define SPLPY_AGGREGATE_TIME_POLICIES ';
@@ -123,12 +197,39 @@ sub main::generate($$) {
     }
    print "\n";
    print 'class MY_OPERATOR : public MY_BASE_OPERATOR,', "\n";
-   print '      public WindowEvent<PyObject *>', "\n";
+   print '      public ';
+   print $windowEventCppType;
+   print "\n";
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print ' , public SPL::StateHandler', "\n";
    print '#endif', "\n";
+   print '#if SPLPY_PARTITION_BY_PYTHON == 1', "\n";
+   print '  , public streamsx::topology::OperatorWithCallable', "\n";
+   print '#endif', "\n";
    print '{', "\n";
    print 'public:', "\n";
+   print '  typedef ';
+   print $windowCppType;
+   print ' WindowType;', "\n";
+   print '  typedef ';
+   print $windowEventCppType;
+   print ' WindowEventType;', "\n";
+   if ($partitionByParam) {
+   print "\n";
+   print '  typedef ';
+   print $partitionByTypes[0];
+   print ' PartitionByType;', "\n";
+   print '  typedef ';
+   print $inputPort->getCppTupleType();
+   print ' TupleType;', "\n";
+   } elsif ($partitionByName) {
+   print "\n";
+   print '  typedef PyObject * PartitionByType;', "\n";
+   print '  typedef ';
+   print $inputPort->getCppTupleType();
+   print ' TupleType;', "\n";
+   }
+   print "\n";
    print '  MY_OPERATOR();', "\n";
    print '  virtual ~MY_OPERATOR(); ', "\n";
    print '  void prepareToShutdown(); ', "\n";
@@ -139,18 +240,21 @@ sub main::generate($$) {
     if ($window->isSliding()) {
    print "\n";
    print '  void onWindowTriggerEvent(', "\n";
-   print '     Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key);', "\n";
+   print '     WindowEventType::WindowType & window, WindowEventType::PartitionType const& key);', "\n";
    print '  void afterTupleEvictionEvent(', "\n";
-   print '     Window<PyObject *> & window,  Window<PyObject *>::TupleType & tuple,', "\n";
-   print '     Window<PyObject *>::PartitionType const & partition);', "\n";
+   print '     WindowEventType::WindowType & window,  WindowEventType::TupleType & tuple,', "\n";
+   print '     WindowEventType::PartitionType const & partition);', "\n";
    }
    print "\n";
     if ($window->isTumbling()) {
    print "\n";
    print '  void beforeWindowFlushEvent(', "\n";
-   print '     Window<PyObject *> & window, Window<PyObject *>::PartitionType const& key);', "\n";
+   print '     WindowEventType::WindowType & window, WindowEventType::PartitionType const& key);', "\n";
    }
    print "\n";
+   print '#if SPLPY_PARTITION_BY_PYTHON == 1', "\n";
+   print '  void onWindowPartitionEviction(WindowEventType::WindowType & window, WindowEventType::PartitionIterator begin, WindowEventType::PartitionIterator end);', "\n";
+   print '#endif', "\n";
    print "\n";
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '  virtual void drain();', "\n";
@@ -163,11 +267,33 @@ sub main::generate($$) {
    print '  void onResetToInitialStateEvent() {op()->resetToInitialState();}', "\n";
    print '#endif', "\n";
    print "\n";
+   print '#if SPLPY_PARTITION_BY_PYTHON == 1', "\n";
+   print '  void setCallable(PyObject * callable);', "\n";
+   print '  void clearCallable();', "\n";
+   print '#endif', "\n";
+   print "\n";
    print 'private:', "\n";
    print '    SplpyOp * op() const { return funcop_; }', "\n";
     if ($window->isTumbling()) {
    print "\n";
    print '   void aggregateRemaining();', "\n";
+   }
+   print "\n";
+   print "\n";
+   print '    const SPL::rstring & param(const char *name) const {', "\n";
+   print '        return getParameterValues(name)[0]->getValue();', "\n";
+   print '    }', "\n";
+   print "\n";
+   if ($partitionByParam) {
+   print "\n";
+   print '    PartitionByType const & getPartitionValue(TupleType const & tuple) const {', "\n";
+   print '      return tuple.get_';
+   print $partitionParamName;
+   print '();', "\n";
+   print '    }', "\n";
+   } elsif ($partitionByName) {
+   print "\n";
+   print '    PyObject * getPartitionValue(PyObject * tuple) const;', "\n";
    }
    print "\n";
    print "\n";
@@ -185,14 +311,17 @@ sub main::generate($$) {
    print '    int32_t occ_;', "\n";
    print "\n";
    print '    // Window definition', "\n";
-   print '    ';
-   print $windowCppType;
-   print '  window_;	       ', "\n";
+   print '    WindowType window_;	       ', "\n";
+   print "\n";
+   print '    Metric& _partitionCount;', "\n";
    print "\n";
    print '#if SPLPY_AGGREGATE_TIME_POLICIES == 0', "\n";
    print '    // Locking is through window acquire data when', "\n";
    print '    // there are time policies', "\n";
    print '    SPL::Mutex mutex_;', "\n";
+   print '#endif', "\n";
+   print '#if SPLPY_PARTITION_IS_STATEFUL == 1', "\n";
+   print '    streamsx::topology::SplpyOpStateHandlerImpl * partitionStateHandler_;', "\n";
    print '#endif', "\n";
    print '}; ', "\n";
    print "\n";

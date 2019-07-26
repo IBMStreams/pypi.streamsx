@@ -1,6 +1,6 @@
 # coding=utf-8
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2016,2017
+# Copyright IBM Corp. 2016,2019
 
 """
 Primitive objects for REST bindings.
@@ -25,6 +25,7 @@ import time
 import json
 import re
 import time
+import xml.etree.ElementTree as ElementTree
 
 from pprint import pformat
 from urllib import parse
@@ -282,11 +283,13 @@ class _ICPDAuthHandler(_BearerAuthHandler):
         logger.debug("ICP4D:Token refreshed:expiry:" + time.ctime(self._auth_expiry_time))
 
 class _ICPDExternalAuthHandler(_BearerAuthHandler):
-    def __init__(self, endpoint, username, password):
+    def __init__(self, endpoint, username, password, verify, service_name):
         super(_ICPDExternalAuthHandler, self).__init__()
         self._endpoint = endpoint
         self.__username = username
         self.__password = password
+        self._service_name = service_name
+        self._verify = verify
         self._cfg = self._create_cfg()
 
     def _refresh_auth(self):
@@ -300,18 +303,26 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
         pd = {'username': self.__username, 'password': self.__password}
 
         es = up.urlsplit(self._endpoint)
-        cluster_ip = es.netloc.split(':')[0]
 
-        auth_url = up.urlunsplit(('https', cluster_ip + ':31843', '/icp4d-api/v1/authorize', None, None))
-        r = requests.post(auth_url, json=pd, verify=False)
+        if es.path.startswith('/streams/rest/instances/'):
+            # Default to the default port
+            cluster_port = 31843
+            self._service_name = es.path.split('/')[-1]
+        elif ':' in es.netloc:
+            cluster_port = es.netloc.split(':')[1]
+        else:
+            cluster_port = 443
+
+        cluster_ip = es.netloc.split(':')[0] if ':' in es.netloc else es.netloc
+
+        auth_url = up.urlunsplit(('https', cluster_ip + ':' + str(cluster_port), '/icp4d-api/v1/authorize', None, None))
+        r = requests.post(auth_url, json=pd, verify=self._verify)
         token = r.json()['token']
 
-        name = es.path.split('/')[-1]
-
         details_url = up.urlunsplit(
-            ('https', cluster_ip + ':31843', 'zen-data/v2/serviceInstance/details', 'displayName=' + name, None))
+            ('https', cluster_ip + ':' + str(cluster_port), 'zen-data/v2/serviceInstance/details', 'displayName=' + self._service_name, None))
         r = requests.get(details_url,
-                         headers={"Authorization": "Bearer " + token}, verify=False)
+                         headers={"Authorization": "Bearer " + token}, verify=self._verify)
 
         sr = r.json()
 
@@ -325,10 +336,10 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
         connection_info = sca['connection-info']
 
         service_token_url = up.urlunsplit(
-            ('https', cluster_ip + ':31843', 'zen-data/v2/serviceInstance/token', None, None))
+            ('https', cluster_ip + ':' + str(cluster_port), 'zen-data/v2/serviceInstance/token', None, None))
         pd = {"serviceInstanceId": str(service_id)}
         r = requests.post(service_token_url, json=pd,
-                          headers={"Authorization": "Bearer " + token}, verify=False)
+                          headers={"Authorization": "Bearer " + token}, verify=self._verify)
 
         service_token = r.json()['AccessToken']
         self.token = service_token
@@ -338,14 +349,21 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
         bu = up.urlsplit(connection_info['externalBuildEndpoint'])
         build_url = up.urlunsplit((bu.scheme, cluster_ip + ':' + str(bu.port), bu.path, None, None))
 
+        ru = up.urlsplit(connection_info['externalRestEndpoint'])
+        streams_url = up.urlunsplit((bu.scheme, cluster_ip + ':' + str(ru.port), ru.path, None, None))
+
         cfg = {
                 'type': 'streams',
                 'connection_info': {
                     'externalClient':True,
                     'serviceBuildEndpoint': build_url,
-                    'serviceRestEndpoint': self._endpoint},
+                    'serviceRestEndpoint': streams_url},
+                'serviceTokenEndpoint': service_token_url,
                 'service_token': service_token,
+                'service_token_expire': int(self._auth_expiry_time * 1000.0),
+                'service_name': service_name,
                 'cluster_ip': cluster_ip,
+                'cluster_port': cluster_port,
                 'service_id': service_id
         }
 
@@ -1092,6 +1110,16 @@ class OperatorOutputPort(_ResourceElement):
         """
         return self._get_elements(self.metrics, 'metrics', Metric, name=name)
 
+    def get_connections(self):
+        """Get the list of :py:class:`OperatorConnection` elements associated with this port.
+
+        Returns:
+            list(OperatorConnection): List of OperatorConnection elements associated with this port.
+
+        .. versionadded:: 1.13
+        """
+        return self._get_elements(self.connections, 'connections', OperatorConnection)
+
 class OperatorInputPort(_ResourceElement):
     """Operator input port.
 
@@ -1122,6 +1150,16 @@ class OperatorInputPort(_ResourceElement):
             >>> metrics = input_port.get_metrics(name='*temperatureSensor*')
         """
         return self._get_elements(self.metrics, 'metrics', Metric, name=name)
+
+    def get_connections(self):
+        """Get the list of :py:class:`OperatorConnection` elements associated with this port.
+
+        Returns:
+            list(OperatorConnection): List of OperatorConnection elements associated with this port.
+
+        .. versionadded:: 1.13
+        """
+        return self._get_elements(self.connections, 'connections', OperatorConnection)
 
 
 class Metric(_ResourceElement):
@@ -1539,7 +1577,7 @@ class Instance(_ResourceElement):
 
     @staticmethod
     def of_service(config):
-        """Connect to an IBM Streams service instance running in IBM Cloud Private for Data.
+        """Connect to an IBM Streams service instance running in Cloud Pak for Data.
 
         The instance is specified in `config`. The configuration may be code injected from the list of services
         in a Jupyter notebook running in ICPD or manually created. The code that selects a service instance by name is::
@@ -1592,9 +1630,34 @@ class Instance(_ResourceElement):
         return resource_url, name
 
     @staticmethod
-    def of_endpoint(endpoint=None, username=None, password=None, verify=None):
+    def of_endpoint(endpoint=None, service_name=None, username=None, password=None, verify=None):
+        """
+        Connect to a Cloud Pak for Data IBM Streams instance from
+        outside the cluster.
+
+        Args:
+            endpoint(str): Deployment URL for Cloud Pak for Data, e.g. `https://cp4d_server:31843`. Defaults to the environment variable ``CP4D_URL``.
+            service_name(str): Streams instance name. Defaults to the environment variable ``STREAMS_INSTANCE_ID``.
+            username(str): User name to authenticate as. Defaults to the environment variable ``STREAMS_USERNAME`` or the operating system identifier if not set.
+            password(str): Password for authentication. Defaults to the environment variable ``STREAMS_PASSWORD`` or the operating system identifier if not set.
+            verify: SSL verification. Set to ``False`` to disable SSL verification. Defaults to SSL verification being enabled.
+
+        Returns:
+            Instance: Connection to Streams instance or ``None`` of insufficient configuration was provided.
+
+        .. versionadded:: 1.13
+        """
         if not endpoint:
-            endpoint = os.environ.get('STREAMS_REST_URL')
+            endpoint = os.environ.get('CP4D_URL')
+            if endpoint:
+                if not service_name:
+                    service_name = os.environ.get('STREAMS_INSTANCE_ID')
+                if not service_name:
+                    return None
+            else:
+                endpoint = os.environ.get('STREAMS_REST_URL')
+                if not endpoint:
+                    return None
         if not endpoint:
             return None
         if not password:
@@ -1603,15 +1666,14 @@ class Instance(_ResourceElement):
             return None
         username = _get_username(username)
 
-        resource_url, name = Instance._root_from_endpoint(endpoint)
-        if resource_url is None:
-            return None
-        sc = streamsx.rest.StreamsConnection(resource_url=resource_url,
-                                             auth=_ICPDExternalAuthHandler(endpoint, username, password))
+        auth=_ICPDExternalAuthHandler(endpoint, username, password, verify, service_name)
+        resource_url, _ = Instance._root_from_endpoint(auth._cfg['connection_info'].get('serviceRestEndpoint'))
+
+        sc = streamsx.rest.StreamsConnection(resource_url=resource_url, auth=auth)
         if verify is not None:
             sc.rest_client.session.verify = verify
  
-        return sc.get_instance(name)
+        return sc.get_instance(auth._cfg['service_name'])
 
     def get_operators(self, name=None):
         """Get the list of :py:class:`Operator` elements associated with this instance.
@@ -2456,10 +2518,11 @@ class ApplicationConfiguration(_ResourceElement):
             cv['name'] = str(name)
         if description:
             cv['description'] = str(description)
-        acp = {}
-        for k,v in properties.items():
-            acp[str(k)] = None if v is None else str(v)
-        cv['properties'] = acp
+        if properties is not None:
+            acp = {}
+            for k,v in properties.items():
+                acp[str(k)] = None if v is None else str(v)
+            cv['properties'] = acp
         return cv
 
     def update(self, properties=None, description=None):
@@ -2546,3 +2609,94 @@ class _StreamsRestDelegator(object):
         res.raise_for_status()
 
         return False
+
+class Toolkit(_ResourceElement):
+    """IBM Streams toolkit.
+
+    Attributes:
+        id(str): Unique ID for this instance.
+        resourceType(str): Identifies the REST resource type, which is *toolkit*. 
+        name(str): The name of the toolkit.
+        version(str): The version of the toolkit.
+        requiredProductVersion(str): The earliest version of Streams required by the toolkit.
+        path(str): The full path to the toolkit.
+
+    Example:
+        >>> from streamsx.build import BuildService
+        >>> build_service = BuildService.of_endpoint()
+        >>> toolkits = build_service.get_toolkits()
+        >>> print (toolkits[0].resourceType)
+        toolkit
+
+        .. versionadded:: 1.13
+    """
+    def __init__(self, json_rep, rest_client):
+        super(Toolkit, self).__init__(json_rep, rest_client)
+
+    def get_index(self):
+        res = self.rest_client.make_raw_streaming_request(self.index, 'text/xml')
+        _handle_http_errors(res)
+        return res.text        
+
+    def delete(self):
+        res = self.rest_client.session.delete(self.self, 
+                headers = {'Accept' : 'application/json'},
+                verify=self.rest_client.session.verify)
+
+        # 204 is success
+        if res.status_code == 204:
+            return True
+        if res.status_code == 404:
+            # not found
+            return False
+
+        res.raise_for_status()
+
+        return False
+    
+    @staticmethod
+    def _toolkits_url(sc):
+        toolkits_url = None
+        for resource in sc.get_resources():
+            if resource.name == 'toolkits':
+                toolkits_url = resource.resource
+                break;
+        else:
+            raise ValueError('The toolkits REST API is not supported by the Streams instance')
+        return toolkits_url                 
+
+    class Dependency:
+        """
+        The name, and range of versions, of a toolkit required by another
+        toolkit.
+        
+        Attributes:
+            name(str): the name of the required toolkit
+            version(str): the range of versions required of the toolkit
+        """
+        def __init__(self, name, version):
+            self.name = name
+            self.version = version
+
+        def __str__(self):
+            return self.name  + ' ' + self.version
+           
+    @property
+    def dependencies(self):
+        """
+        Find all the dependencies for this toolkit.
+        
+        Returns:
+            list(Dependency):  List of dependencies of this toolkit.  If this
+            toolkit does not have any dependencies, this will be an empty list.
+        """
+        deps = []
+        index = self.get_index()
+        root = ElementTree.fromstring(index)
+        toolkit_element = root.find('{http://www.ibm.com/xmlns/prod/streams/spl/toolkit}toolkit')
+        dependency_elements = toolkit_element.findall('{http://www.ibm.com/xmlns/prod/streams/spl/toolkit}dependency')
+        for dependency_element in dependency_elements:
+            name = dependency_element.find('{http://www.ibm.com/xmlns/prod/streams/spl/common}name').text
+            version = dependency_element.find('{http://www.ibm.com/xmlns/prod/streams/spl/common}version').text
+            deps.append(Toolkit.Dependency(name, version))
+        return deps
