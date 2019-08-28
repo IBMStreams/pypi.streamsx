@@ -10,7 +10,7 @@ Module that allows the definition and execution of streaming
 applications implemented in Python. Applications use Python code to process
 tuples and tuples are Python objects.
 
-See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/latest/streamsx.topology.html#module-streamsx.topology>`_
+See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/stable/streamsx.topology.html#module-streamsx.topology>`_
 
 Python callables as SPL operators
 =================================
@@ -20,7 +20,7 @@ to allow tuple processing using Python in an SPL application.
 SPL (Streams Processing Language) is a domain specific language for streaming
 analytics supported by IBM Streams.
 
-See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/latest/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
+See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/stable/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
 
 Streams Python REST API
 =======================
@@ -28,11 +28,11 @@ Streams Python REST API
 Module that allows interaction with an running Streams instance or service
 through HTTPS REST APIs.
 
-See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/latest/streamsx.rest.html#module-streamsx.rest>`_
+See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/stable/streamsx.rest.html#module-streamsx.rest>`_
 
 Documentation
 =============
 
-`Full package documentation. <https://streamsxtopology.readthedocs.io/en/latest>`_
+`Full package documentation. <https://streamsxtopology.readthedocs.io/en/stable>`_
 
 

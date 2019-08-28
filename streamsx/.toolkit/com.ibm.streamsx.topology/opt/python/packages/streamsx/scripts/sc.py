@@ -7,6 +7,7 @@ import sysconfig
 import os
 import argparse
 import urllib3
+import shutil
 import streamsx.rest
 import pkg_resources
 from streamsx.spl.op import main_composite
@@ -22,7 +23,7 @@ from io import StringIO
 _FACADE=['--prefer-facade-tuples', '-k']
 
 def main(args=None):
-    """ Mimics SPL SPL compiler sc against the ICP4D build service.
+    """ Mimics SPL compiler sc against the ICP4D build service.
     """
     cmd_args = _parse_args(args)
     topo = _create_topo(cmd_args)
@@ -30,14 +31,17 @@ def main(args=None):
     # Get dependencies for app, if any at all
     dependencies = _parse_dependencies()
     # if dependencies and if -t arg, find & add local toolkits
-    if dependencies and cmd_args.spl_path:
-        tool_kits = cmd_args.spl_path.split(':')
+    spl_path = cmd_args.spl_path
+    if spl_path is None:
+        spl_path = os.environ.get('STREAMS_SPLPATH')
+    if dependencies and spl_path:
+        tool_kits = spl_path.split(':')
         # Check if any dependencies are in the passed in toolkits, if so add them
         _add_local_toolkits(tool_kits, dependencies, topo, verify_arg = False if cmd_args.disable_ssl_verify else None)
 
     _add_toolkits(cmd_args, topo)
-    _submit_build(cmd_args, topo)
-    return 0
+    sr = _submit_build(cmd_args, topo)
+    return _move_bundle(cmd_args, sr)
 
 def _parse_dependencies():
     # Parse info.xml for the dependencies of the app you want to build sab file for
@@ -250,13 +254,38 @@ def _submit_build(cmd_args, topo):
          cfg[ConfigParams.SSL_VERIFY] = False
          urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
      _sc_options(cmd_args, cfg)
-     submit('BUNDLE', topo, cfg)
+     return submit('BUNDLE', topo, cfg)
+
+def _move_bundle(cmd_args, sr):
+    out_dir = cmd_args.output_directory
+    if not out_dir:
+        out_dir = 'output'
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+    if 'jobConfigPath' in sr:
+        jco = sr['jobConfigPath']
+        shutil.move(jco, os.path.join(out_dir, os.path.basename(jco)))
+    if not 'bundlePath' in sr:
+        return 1
+    sab = sr['bundlePath']
+    shutil.move(sab, os.path.join(out_dir, os.path.basename(sab)))
+    return 0
 
 def _sc_options(cmd_args, cfg):
     args = []
     if cmd_args.prefer_facade_tuples:
         args.append(_FACADE[0])
 
+    if cmd_args.ld_flags:
+        args.append('--ld-flags=' + str(cmd_args.ld_flags))
+    if cmd_args.cxx_flags:
+        args.append('--cxx-flags=' + str(cmd_args.cxx_flags))
+    if cmd_args.cppstd:
+        args.append('--c++std=' + str(cmd_args.cppstd))
+    if cmd_args.data_directory:
+        args.append('--data-directory=' + str(cmd_args.data_directory))
+    if cmd_args.compile_time_args: # sc -M my::App hello=a,b,c foo=bar -> compile_time_args = ['hello=a,b,c', 'foo=bar']
+        args.extend(cmd_args.compile_time_args)
     if args:
         cfg[ConfigParams.SC_OPTIONS] = args
 
@@ -299,6 +328,14 @@ def _parse_args(args):
     cmd_parser.add_argument('--optimized-code-generation', '-a', action='store_true', help='Generate optimized code with less runtime error checking.')
     cmd_parser.add_argument('--no-optimized-code-generation', action='store_true', help='Generate non-optimized code with more runtime error checking. Do not use with the --optimized-code-generation option.')
     cmd_parser.add_argument(*_FACADE, action='store_true', help='Generate the facade tuples when it is possible.')
+
+    cmd_parser.add_argument('compile_time_args', help='arguments that are passed in at compile time.', nargs='*', metavar='compile-time-args')
+    cmd_parser.add_argument('--ld-flags', '-w', help='Pass the specified flags to ld while linking occurs.')
+    cmd_parser.add_argument('--cxx-flags', '-x', help='Pass the specified flags to the C++ compiler during the build.')
+    cmd_parser.add_argument('--c++std', help='Specify the language level for the underlying C++ compiles.', dest='cppstd')
+    cmd_parser.add_argument('--data-directory', help='Specifies the location of the data directory to use.')
+    cmd_parser.add_argument('--output-directory', help='Specifies a directory where the application artifacts are placed.')
+
     _buildservice_args(cmd_parser)
     _deprecated_args(cmd_parser)
 
