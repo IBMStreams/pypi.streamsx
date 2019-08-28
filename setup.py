@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
             'streamsx-runner=streamsx.scripts.runner:main',
             'streams-service=streamsx.scripts.service:main',
+            'streamsx-service=streamsx.scripts.service:main',
             'streamsx-info=streamsx.scripts.info:main',
             'streamsx-streamtool=streamsx.scripts.streamtool:main',
             'streamsx-sc=streamsx.scripts.sc:main',
