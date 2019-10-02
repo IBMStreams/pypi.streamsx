@@ -1,17 +1,18 @@
 from setuptools import setup
 import streamsx._streams._version
+version = streamsx._streams._version.__version__,
 setup(
   name = 'streamsx',
   packages = ['streamsx', 'streamsx.spl', 'streamsx.topology', 'streamsx.scripts', 'streamsx._streams'],
   include_package_data=True,
-  version = streamsx._streams._version.__version__,
+  version = version,
   description = 'IBM Streams Python Support',
   long_description = open('DESC.txt').read(),
   author = 'IBM Streams @ github.com',
   author_email = 'debrunne@us.ibm.com',
   license='Apache License - Version 2.0',
   url = 'https://github.com/IBMStreams/pypi.streamsx',
-  download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/' + streamsx._streams._version.__version__,
+  download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/' + version,
   keywords = ['streams', 'ibmstreams', 'streaming', 'analytics', 'streaming-analytics'],
   classifiers = [
     'Development Status :: 5 - Production/Stable',
@@ -23,7 +24,7 @@ setup(
     'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
   ],
-  install_requires=['requests', 'future', 'dill', 'enum34;python_version=="2.7"'],
+  install_requires=['requests', 'future', 'dill>=0.2.8.2,<0.3.1', 'enum34;python_version=="2.7"'],
   entry_points = {
         'console_scripts': [
             'streamsx-runner=streamsx.scripts.runner:main',
