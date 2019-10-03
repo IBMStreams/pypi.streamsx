@@ -1,8 +1,6 @@
 from setuptools import setup
 import streamsx._streams._version
-#version = streamsx._streams._version.__version__,
-# Temp to create post release to restrict dill version
-version = '1.13.8.post1'
+version = streamsx._streams._version.__version__,
 setup(
   name = 'streamsx',
   packages = ['streamsx', 'streamsx.spl', 'streamsx.topology', 'streamsx.scripts', 'streamsx._streams'],
