@@ -1,6 +1,6 @@
 from setuptools import setup
 import streamsx._streams._version
-version = streamsx._streams._version.__version__,
+version = streamsx._streams._version.__version__
 setup(
   name = 'streamsx',
   packages = ['streamsx', 'streamsx.spl', 'streamsx.topology', 'streamsx.scripts', 'streamsx._streams'],
