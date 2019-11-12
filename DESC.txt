@@ -4,13 +4,29 @@ IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
  * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
  * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
+streamsx 2.0 alpha
+==================
+
+Alpha release, functionality and API subject to change before GA release.
+
+Please evaluate these items in 2.0 alpha:
+
+  * Python type hints are used to define stream schemas and verify topologies at declaration time.
+     * `Setting stream schema from type hints <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.topology.html#stream>`_
+     * `Type checking at topology declaration time <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.topology.html#callables>`_
+ * Python 2.7 support has been dropped.
+ * Functionality marked deprecated in 1.13 or earlier releases has been removed.
+
 Python Topology API for Streams
 ===============================
 Module that allows the definition and execution of streaming
 applications implemented in Python. Applications use Python code to process
 tuples and tuples are Python objects.
 
-See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/stable/streamsx.topology.html#module-streamsx.topology>`_
+See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.html#module-streamsx.topology>`_
+
+Additional streamsx packages providing adapters and/or analytics
+are `available at pypi.org <https://pypi.org/search/?q=streamsx>`_
 
 Python callables as SPL operators
 =================================
@@ -20,7 +36,7 @@ to allow tuple processing using Python in an SPL application.
 SPL (Streams Processing Language) is a domain specific language for streaming
 analytics supported by IBM Streams.
 
-See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/stable/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
+See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
 
 Streams Python REST API
 =======================
@@ -28,11 +44,11 @@ Streams Python REST API
 Module that allows interaction with an running Streams instance or service
 through HTTPS REST APIs.
 
-See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/stable/streamsx.rest.html#module-streamsx.rest>`_
+See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.rest.html#module-streamsx.rest>`_
 
 Documentation
 =============
 
-`Full package documentation. <https://streamsxtopology.readthedocs.io/en/stable>`_
+`Full package documentation. <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha>`_
 
 
