@@ -1,8 +1,6 @@
 # coding=utf-8
 # Licensed Materials - Property of IBM
 # Copyright IBM Corp. 2016
-from __future__ import unicode_literals
-from future.builtins import *
 
 import os
 import sys
@@ -11,7 +9,6 @@ import inspect
 import logging
 import importlib
 import types
-from past.builtins import basestring
 
 import streamsx.ec as ec
 from streamsx.topology.schema import StreamSchema
@@ -20,11 +17,10 @@ import streamsx._streams._runtime
 import dill
 # Importing cloudpickle break dill's deserialization.
 # Workaround is to make dill aware of the ClassType type.
-if sys.version_info.major == 3:
-    if not 'dill._dill' in sys.modules:
-        sys.modules['dill._dill'] = dill.dill
-        dill._dill = dill.dill
-    dill._dill._reverse_typemap['ClassType'] = type
+if not 'dill._dill' in sys.modules:
+    sys.modules['dill._dill'] = dill.dill
+    dill._dill = dill.dill
+dill._dill._reverse_typemap['ClassType'] = type
     
 import base64
 import json
@@ -67,7 +63,7 @@ def _json_force_object(v):
 def _get_callable(f):
     if callable(f):
         return f
-    if isinstance(f, basestring):
+    if isinstance(f, str):
         ci = dill.loads(base64.b64decode(f))
         if callable(ci):
             return ci
@@ -299,10 +295,6 @@ class _ObjectIterator(object):
        while nv is None:
           nv = next(self.it)
        return nv
-# python 2.7 uses the next function whereas 
-# python 3.x uses __next__ 
-   def next(self):
-       return self.__next__()
 
 # and pickle any returned value.
 class _PickleIterator(_ObjectIterator):
@@ -427,20 +419,33 @@ tuple_in = object_in
 def _get_namedtuple_cls(schema, name):
     return StreamSchema(schema).as_tuple(named=name).style
 
-def _inline_modules(fn, modules, constants):
-    if sys.version_info.major == 2:
-        return None
+def _inline_modules(fn, modules, constants, inlines):
     cvs = inspect.getclosurevars(fn)
     for mk in cvs.globals.keys():
         gv = cvs.globals[mk]
         if isinstance(gv, types.ModuleType):
             modules[mk] = gv.__name__
-        elif hasattr(gv, '__module__') and gv.__module__ != '__main__':
+            continue
+        elif hasattr(gv, '__module__') and gv.__module__ != '__main__' and hasattr(gv, '__name__'):
             modules[mk] = gv.__name__, gv.__module__
-        elif type(gv) == str or type(gv) == int or type(gv) == float or type(gv) == bool:
+            continue
+        elif type(gv) == str or type(gv) == int or type(gv) == float or type(gv) == bool or type(gv) == bytes or type(gv) == complex:
             constants[mk] = gv
-        else:
-            raise TypeError("Unsupported global closure {} type {} in {}".format(mk, gv, fn))
+            continue
+        elif hasattr(gv, '__module__') and gv.__module__ == '__main__':
+            if inspect.isroutine(gv):
+                if mk not in inlines:
+                    inlines[mk] = gv
+                    _inline_modules(gv, modules, constants, inlines)
+                continue
+            elif type(gv) == type:
+                if mk not in inlines:
+                    inlines[mk] = gv
+                    for xm in inspect.getmembers(gv, inspect.ismethod):
+                        _inline_modules(xm[1], modules, constants, inlines)
+                continue
+ 
+        raise TypeError("Unsupported global closure {} type {} in {}".format(mk, gv, fn))
           
 
 # Wraps an callable instance 
@@ -457,24 +462,26 @@ class _ModulesCallable(streamsx._streams._runtime._WrapOpLogic):
         check_cmm = False
         modules = {}
         constants = {}
+        inlines = {}
         if inspect.isroutine(callable_):
-            self._modules = _inline_modules(callable_, modules, constants)
+            _inline_modules(callable_, modules, constants, inlines)
         elif callable(callable_):
-            self._modules = _inline_modules(callable_.__call__, modules, constants)
+            _inline_modules(callable_.__call__, modules, constants, inlines)
             check_cmm = True
         elif type(callable_).__module__ == '__main__': 
-            self._modules = _inline_modules(callable_.__iter__, modules, constants)
+            _inline_modules(callable_.__iter__, modules, constants, inlines)
             # Handle common case the iterable is also the iterator.
             if hasattr(callable_, '__next__'):
-                self._modules.update(_inline_modules(callable_.__next__, modules, constants))
+                _inline_modules(callable_.__next__, modules, constants, inlines)
             check_cmm = True
 
         if check_cmm and self._streamsx_ec_context:
-            self._modules.update(_inline_modules(callable_.__enter__, modules, constants))
-            self._modules.update(_inline_modules(callable_.__exit__, modules, constants))
+            _inline_modules(callable_.__enter__, modules, constants, inlines)
+            _inline_modules(callable_.__exit__, modules, constants, inlines)
 
         self._modules = modules if modules else None
         self._constants = constants if constants else None
+        self._inlines = inlines if inlines else None
 
     def __getstate__(self):
         return self.__dict__
@@ -484,7 +491,7 @@ class _ModulesCallable(streamsx._streams._runtime._WrapOpLogic):
 
         # Patch the lambda/in-line function's globals
         # to include any modules it references.
-        if self._modules or self._constants:
+        if self._modules or self._constants or self._inlines:
             if inspect.isroutine(self._callable):
                 gbls = self._callable.__globals__
             elif callable(self._callable):
@@ -505,6 +512,12 @@ class _ModulesCallable(streamsx._streams._runtime._WrapOpLogic):
             for vn,mn in self._constants.items():
                 if vn not in gbls:
                     gbls[vn] = self._constants[vn]
+
+        if self._inlines:
+            for vn,d in self._inlines.items():
+                if vn not in gbls:
+                    gbls[vn] = self._inlines[vn]
+            
 
 
 class _Callable0(_ModulesCallable):
@@ -537,7 +550,7 @@ class _SubmissionParam(object):
         if default is None and type_ is None:
             type_ = None
             self._spl_type = 'RSTRING'
-        elif isinstance(default, basestring):
+        elif isinstance(default, str):
             type_ = None
             self._spl_type = 'RSTRING'
         elif isinstance(default, bool):
