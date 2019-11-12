@@ -11,9 +11,9 @@ Alpha release, functionality and API subject to change before GA release.
 
 Please evaluate these items in 2.0 alpha:
 
-  * Python type hints are used to define stream schemas and verify topologies at declaration time.
-     * `Setting stream schema from type hints <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.topology.html#stream>`_
-     * `Type checking at topology declaration time <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.topology.html#callables>`_
+ * Python type hints are used to define stream schemas and verify topologies at declaration time.
+   * `Setting stream schema from type hints <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.topology.html#stream>`_
+   * `Type checking at topology declaration time <https://streamsxtopology.readthedocs.io/en/v2.0.0_alpha/streamsx.topology.topology.html#callables>`_
  * Python 2.7 support has been dropped.
  * Functionality marked deprecated in 1.13 or earlier releases has been removed.
 
