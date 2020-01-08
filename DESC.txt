@@ -5,7 +5,7 @@ IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
  * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
 streamsx 1.14.0 alpha
-===================
+=====================
 
 Alpha release, functionality and API subject to change before GA release.
 
