@@ -124,6 +124,7 @@ sub main::generate($$) {
    print '         SPL::AutoPortMutex am(mutex_, *this);', "\n";
    print '#endif', "\n";
    print '         try {', "\n";
+   print '           SplpyGIL lock;', "\n";
    print "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
@@ -222,7 +223,16 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '             split = streamsx::topology::Splpy::pyTupleSplit(funcop_->callable(), value);', "\n";
+   print '           PyObject *ret = pySplProcessTuple(funcop_->callable(), value);', "\n";
+   print "\n";
+   print '           if (ret == 0) {', "\n";
+   print '               throw SplpyExceptionInfo::pythonError("split");', "\n";
+   print '           }', "\n";
+   print "\n";
+   print '           pySplValueFromPyObject(split, ret);', "\n";
+   print "\n";
+   print '           Py_DECREF(ret);', "\n";
+   print "\n";
    print '         } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
    print '             SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
    print '             return;', "\n";

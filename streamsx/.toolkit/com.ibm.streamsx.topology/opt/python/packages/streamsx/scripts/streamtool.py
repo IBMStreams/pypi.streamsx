@@ -681,6 +681,105 @@ def _uploadtoolkit(instance, cmd_args, rc):
 
     return (rc, return_message)
 
+###########################################
+# updateoperators
+###########################################
+def _updateops_parser(subparsers):
+    update_ops = subparsers.add_parser('updateoperators', help='Adjust a job configuration while the job is running')
+    g1 = update_ops.add_argument_group(title='Job selection', description='One of these options must be chosen.')
+    group = g1.add_mutually_exclusive_group(required=True)
+    group.add_argument('jobid', help='Specifies a job ID.', nargs='?', metavar='jobid')
+    group.add_argument('--jobname', help='Specifies the name of the job.', metavar='job-name')
+    update_ops.add_argument('--jobConfig', '-g', help='Specifies the name of an external file that defines a job configuration overlay', metavar='file-name')
+    update_ops.add_argument('--parallelRegionWidth', help='Specifies a parallel region name and its width', metavar='parallelRegionName=width')
+    update_ops.add_argument('--force', action='store_true', help='Specifies whether to automatically stop the PEs that need to be stopped', default=False)
+
+    _user_arg(update_ops)
+
+def _updateops(instance, cmd_args, rc):
+    return_message = None
+    job_config_json = None
+    job = None
+
+    # Check that job w/ jobID or jobname exists
+    if cmd_args.jobid:
+        job = instance.get_job(id=str(cmd_args.jobid))
+    elif cmd_args.jobname:
+        jobs = instance.get_jobs(name=str(cmd_args.jobname))
+        if jobs:
+            job = jobs[0]
+
+    # job doesn't exist, throw error
+    if not job:
+        return (1, "The job was not found")
+
+    if cmd_args.jobConfig:
+        with open(cmd_args.jobConfig) as fd:
+            job_config_json = json.load(fd)
+        # If empty JCO passed in, throw error
+        if not job_config_json:
+            return (1, 'JCO is empty')
+    elif cmd_args.parallelRegionWidth:
+        # If no JCO, but parallelRegionWidth arg passed in, create empty JCO and later populate w/ parallelRegionWidth
+        job_config_json = {}
+    else:
+        # No JCO or parallelRegionWidth arg, throw error
+        return (1, 'A JCO or parallelRegionWidth is required')
+
+
+    if cmd_args.parallelRegionWidth:
+        # Overrides the targetParallelRegion if already present in the JCO
+        # else, populate empty JCO w/ parallelRegionWidth
+        arr = cmd_args.parallelRegionWidth.split('=')
+        if len(arr) != 2:
+            raise ValueError("The format of the following submission-time parameter is not valid: {}. The correct syntax is: <name>=<value>".format(arr))
+        name, width = arr[0], arr[1]
+
+        entry = {'targetParallelRegion': {'regionName': name, 'newWidth': int(width)}}
+
+        # If JCO is empty, and parallelRegionWidth arg is present, create JCO with arg
+        if not job_config_json:
+            job_config_json = {
+                'jobConfigOverlays' : [
+                    {'configInstructions' : {'adjustmentSection': [entry]}
+                    }
+                ]
+            }
+        else:
+            # Non-empty JCO, and parallelRegionWidth arg is present, override existing in JCO
+
+            # jobConfigOverlays is an array, where only the first jobConfigOverlay is supported
+            JCO = job_config_json['jobConfigOverlays'][0]
+            # Check if configInstructions already exists
+            if 'configInstructions' in JCO:
+                cfg_inst = JCO['configInstructions']
+                # Overwrite adjustmentSection, since only 1 parallelRegion can be specified
+                cfg_inst['adjustmentSection'] = [entry]
+            else:
+                JCO['configInstructions'] = {'adjustmentSection': [entry]}
+
+    # If --force present, force PE to stop
+    if cmd_args.force:
+        JCO = job_config_json['jobConfigOverlays'][0]
+        JCO['operationConfig'] = {"forcePeStopped": True}
+
+    job_config = streamsx.topology.context.JobConfig.from_overlays(job_config_json)
+    json_result = job.update_operators(job_config)
+
+    # --- 1/13/20 JSON result is incorrect until 1Q20 fix ---
+    # if json_result:
+    #     file_name = str(job.name) + '_' + str(job.id) + '_config.json'
+    #     with open(file_name, 'w') as outfile:
+    #         json.dump(json_result, outfile)
+
+    if json_result !=0:
+        return (1, 'Update operators failed')
+    else:
+        print('Update operators was started on the {} instance.'.format(instance.id))
+        # print('The operator configuration results were written to the following file: {}'.format(file_name))
+
+    return (rc, return_message)
+
 def run_cmd(args=None):
     cmd_args = _parse_args(args)
 
@@ -703,6 +802,7 @@ def run_cmd(args=None):
     "rmtoolkit": _rmtoolkit,
     "lstoolkit": _lstoolkit,
     "uploadtoolkit": _uploadtoolkit,
+    "updateoperators": _updateops,
     }
 
     extra_info = None
@@ -741,6 +841,7 @@ def _parse_args(args):
     _rmtoolkit_parser(subparsers)
     _lstoolkit_parser(subparsers)
     _uploadtoolkit_parser(subparsers)
+    _updateops_parser(subparsers)
 
     return cmd_parser.parse_args(args)
 

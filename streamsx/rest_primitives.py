@@ -162,8 +162,8 @@ class _ResourceElement(object):
 def _handle_http_errors(res):
     # HTTP error responses are 4xx, server errors are 5xx
     if res.status_code >= 400:
-        #logger.error("Response returned with error code: " + str(res.status_code))
-        #logger.error(res.text)
+        # logger.error("Response returned with error code: " + str(res.status_code))
+        # logger.error(res.text)
         res.raise_for_status()
 
 
@@ -1033,6 +1033,17 @@ class Job(_ResourceElement):
             bool: True if the job was cancelled, otherwise False if an error occurred.
         """
         return self.rest_client._sc._delegator._cancel_job(self, force)
+
+    def update_operators(self, job_config):
+        """ Adjust a job configuration while the job is running
+
+        Arguments:
+            job_config {JobConfig} -- a job configuration overlay
+
+        Returns:
+            [JSON] -- The result of applying the new jobConfig?
+        """
+        return self.rest_client._sc._delegator._update_operators(self, job_config)
 
     def get_job_group(self):
         """
@@ -2782,6 +2793,25 @@ class _StreamsRestDelegator(object):
         res.raise_for_status()
 
         return False
+
+    def _update_operators(self, job, job_config):
+        self.rest_client._block_ssl_warn()
+
+        job_options = job_config.as_overlays()
+
+        # Update the job operators using the job id
+        update_url = job.instance + '/jobs/' + job.id
+
+        # --- 1/13/20 'preview':False is ignored until 1Q20 fix ---
+        res = self.rest_client.session.patch(update_url,
+                headers = {'Accept' : 'application/json'},
+                json = {'jobConfigurationOverlay':job_options},
+                verify=self.rest_client.session.verify)
+        _handle_http_errors(res)
+        if res.status_code != 200:
+            raise ValueError(str(res))
+        return 0
+        # return res.json()['results']
 
 class Toolkit(_ResourceElement):
     """IBM Streams toolkit.
