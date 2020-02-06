@@ -153,16 +153,19 @@ class _BaseSubmitter(object):
         if remote_context:
             submit_class = "com.ibm.streamsx.topology.context.remote.RemoteContextSubmit"
             try:
-                globals()['get_ipython']()
+                # Verify we are in a IPython env.
+                get_ipython() # noqa : F821
                 import ipywidgets as widgets
+                logger.debug("ipywidgets available - creating IntProgress")
                 progress_bar = widgets.IntProgress(
                     value=0,
                     min=0, max=10, step=1,
                     description='Initializing',
                     bar_style='info', orientation='horizontal',
                     style={'description_width':'initial'})
+                logger.debug("ipywidgets available - created IntProgress")
                 try:
-                    globals()['display'](progress_bar)
+                    display(progress_bar) # noqa : F821
                     def _show_progress(msg):
                         if msg is True:
                             progress_bar.value = progress_bar.max
@@ -176,8 +179,10 @@ class _BaseSubmitter(object):
                         progress_bar.description = msg[3]
                     progress_fn = _show_progress
                 except:
+                    logger.debug("ipywidgets IntProgress error: %s", sys.exc_info()[1])
                     pass
             except:
+                logger.debug("ipywidgets not available: %s", sys.exc_info()[1])
                 pass
         else:
             submit_class = "com.ibm.streamsx.topology.context.local.StreamsContextSubmit"
@@ -877,20 +882,67 @@ class ContextTypes(object):
     BUNDLE = 'BUNDLE'
     """Create a Streams application bundle.
 
-    The `Topology` is compiled locally to produce Streams application bundle (sab file).
+    The `Topology` is compiled to produce Streams application bundle (sab file).
 
     The resultant application can be submitted to:
         * Streaming Analytics service using the Streams console or the Streaming Analytics REST api.
         * IBM Streams instance using the Streams console, JMX api or command line ``streamtool submitjob``.
-        * Executed standalone for development or testing (when built with IBM Streams 4.2 or later).
+        * Executed standalone for development or testing.
 
     The bundle must be built on the same operating system version and architecture as the intended running
-    environment. For Streaming Analytics service this is currently RedHat/CentOS 6 and `x86_64` architecture.
+    environment. For Streaming Analytics service this is currently RedHat/CentOS 7 and `x86_64` architecture.
+    
+    .. rubric:: IBM Cloud Pak for Data integated configuration
+
+    *Projects (within cluster)*
+
+    The `Topology` is compiled using the Streams build service for 
+    a Streams service instance running in the same Cloud Pak for
+    Data cluster as the Jupyter notebook or script declaring the application.
+
+    The instance is specified in the configuration passed into :py:func:`submit`. The code that selects a service instance by name is::
+
+        from icpd_core import icpd_util
+        cfg = icpd_util.get_service_instance_details(name='instanceName')
+
+        topo = Topology()
+        ...
+        submit(ContextTypes.BUNDLE, topo, cfg)
+
+    The resultant `cfg` dict may be augmented with other values such as
+    keys from :py:class:`ConfigParams`.
+
+    *External to cluster or project*
+
+    The `Topology` is compiled using the Streams build service for a Streams service instance running in Cloud Pak for Data.
 
     Environment variables:
-        This environment variables define how the application is built.
+        These environment variables define how the application is built and submitted.
 
-        * **STREAMS_INSTALL** - Location of a IBM Streams installation (4.0.1 or later).
+        * **CP4D_URL** - Cloud Pak for Data deployment URL, e.g. `https://cp4d_server:31843`
+        * **STREAMS_INSTANCE_ID** - Streams service instance name.
+        * **STREAMS_USERNAME** - (optional) User name to submit the job as, defaulting to the current operating system user name.
+        * **STREAMS_PASSWORD** - Password for authentication.
+
+    .. rubric:: IBM Cloud Pak for Data standalone configuration
+
+    The `Topology` is compiled using the Streams build service.
+
+    Environment variables:
+        These environment variables define how the application is built.
+
+        * **STREAMS_BUILD_URL** - Streams build service URL, e.g. when the service is exposed as node port: `https://<NODE-IP>:<NODE-PORT>`
+        * **STREAMS_USERNAME** - (optional) User name to submit the job as, defaulting to the current operating system user name.
+        * **STREAMS_PASSWORD** - Password for authentication.
+
+    .. rubric:: IBM Streams on-premise 4.2 & 4.3
+    
+    The `Topology` is compiled using a local IBM Streams installation.
+
+    Environment variables:
+        These environment variables define how the application is built.
+
+        * **STREAMS_INSTALL** - Location of a local IBM Streams installation.
 
     """
     TOOLKIT = 'TOOLKIT'
@@ -1389,6 +1441,8 @@ class SubmissionResult(object):
             return
   
         try:
+            # Verify we are in a IPython env.
+            get_ipython() # noqa : F821
             import ipywidgets as widgets
             if not description:
                 description = 'Cancel job: '
@@ -1415,7 +1469,7 @@ class SubmissionResult(object):
                     raise
  
             button.on_click(_cancel_job_click)
-            globals['display'](vb)
+            display(vb) # noqa : F821
         except:
             pass
 

@@ -176,6 +176,21 @@ will incorrectly capture the global ``model`` even if the global variable ``mode
 To workaround this bug use attribute or variable names that do not shadow global variables
 (e.g. ``self._model``).
 
+Due to `issue 2336 <https://github.com/IBMStreams/streamsx.topology/issues/2336>`_ an inline class using ``super()`` will cause an ``AttributeError`` at runtime. Workaround is to call the super class's method directly, for example replace this code::
+
+    class A(X):
+        def __init__(self):
+            super().__init__()
+
+with::
+
+    class A(X):
+        def __init__(self):
+            X.__init__(self)
+
+or move the class to a module.
+   
+
 Stateful operations
 ===================
 
@@ -498,6 +513,23 @@ class Topology(object):
 
     def __getitem__(self, name):
         return self._streams[name]
+
+    @property
+    def streams(self):
+        """
+        Dict of all streams in the topology.
+
+        Key is the name of the stream, value is the corresponding :py:obj:`Stream` instance.
+
+        The returned value is a shallow copy of current streams
+        in this topology. This allows callers to iterate over the copy
+        and perform operators that would add streams.
+
+        .. note:: Includes all streams created by composites and any internal streams created by topology.
+ 
+        .. versionadded:: 1.14
+        """
+        return self._streams.copy()
 
     def source(self, func, name=None):
         """
@@ -2083,9 +2115,17 @@ class Stream(_placement._Placement, object):
             Stream: Stream containing the JSON representations of tuples on this stream.
 
         """
-        func = streamsx.topology.runtime._json_force_object if force_object else None
+        force_dict = False
+        if isinstance(self.oport.schema, streamsx.topology.schema.StreamSchema):
+            func = None
+            if self.oport.schema.style != dict:
+                force_dict = True
+        else:
+            func = streamsx.topology.runtime._json_force_object if force_object else None
         saj = self._change_schema(streamsx.topology.schema.CommonSchema.Json, 'as_json', name, func)._layout('AsJson')
         saj.oport.operator.sl = _SourceLocation(_source_info(), 'as_json')
+        if force_dict:
+            saj.oport.operator.params['pyStyle'] = 'dict'
         return saj
 
     def _change_schema(self, schema, action, name=None, func=None):
