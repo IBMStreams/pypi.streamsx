@@ -9,7 +9,7 @@ setup(
   description = 'IBM Streams Python Support',
   long_description = open('DESC.txt').read(),
   author = 'IBM Streams @ github.com',
-  author_email = 'debrunne@us.ibm.com',
+  author_email = 'hegermar@de.ibm.com',
   license='Apache License - Version 2.0',
   url = 'https://github.com/IBMStreams/pypi.streamsx',
   download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/' + version,
