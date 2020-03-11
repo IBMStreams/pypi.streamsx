@@ -153,10 +153,10 @@ sub main::generate($$) {
    print "\n";
    print '                    if (PyTuple_Check(pyReturnVar)) {', "\n";
    print '                        fromPyTupleToSPLTuple(pyReturnVar, otuple);', "\n";
-   print '                        Py_DECREF(pyReturnVar);', "\n";
+   print '                        //Py_DECREF(pyReturnVar); // causing trouble with multiple sources in same PE, why Py_DECREF when there is Py_CLEAR in the loop?', "\n";
    print '                    } else if (PyDict_Check(pyReturnVar)) {', "\n";
    print '                        fromPyDictToSPLTuple(pyReturnVar, otuple);', "\n";
-   print '                        Py_DECREF(pyReturnVar);', "\n";
+   print '                        //Py_DECREF(pyReturnVar); // causing trouble with multiple sources in same PE, why Py_DECREF when there is Py_CLEAR in the loop?', "\n";
    print '                    } else {', "\n";
    print '                        throw SplpyGeneral::generalException("submit",', "\n";
    print '                "Fatal error: Value submitted must be a Python tuple or dict.");', "\n";
