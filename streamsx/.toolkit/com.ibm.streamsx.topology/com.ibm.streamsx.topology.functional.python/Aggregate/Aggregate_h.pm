@@ -196,6 +196,10 @@ sub main::generate($$) {
        $pystyle_fn = 'tuple';
     }
    print "\n";
+   print "\n";
+    my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
+   print "\n";
+   print "\n";
    print 'class MY_OPERATOR : public MY_BASE_OPERATOR,', "\n";
    print '      public ';
    print $windowEventCppType;
@@ -273,6 +277,13 @@ sub main::generate($$) {
    print '#endif', "\n";
    print "\n";
    print 'private:', "\n";
+   if ($pyoutstyle eq 'dict') {
+   print "\n";
+   print '    void fromPyTupleToSPLTuple(PyObject *pyDict, OPort0Type & otuple);', "\n";
+   print '    void fromPyDictToSPLTuple(PyObject *pyTuple, OPort0Type & otuple);', "\n";
+   }
+   print "\n";
+   print '  ', "\n";
    print '    SplpyOp * op() const { return funcop_; }', "\n";
     if ($window->isTumbling()) {
    print "\n";
@@ -303,6 +314,11 @@ sub main::generate($$) {
    print '    PyObject *spl_in_object_out;', "\n";
    print '    ', "\n";
    print '    PyObject *pyInStyleObj_;', "\n";
+   if ($pyoutstyle eq 'dict') {
+   print '    ', "\n";
+   print '    PyObject *pyOutNames_0;', "\n";
+   }
+   print '    ', "\n";
    print "\n";
    print '    PyObject *loads;', "\n";
    print "\n";
