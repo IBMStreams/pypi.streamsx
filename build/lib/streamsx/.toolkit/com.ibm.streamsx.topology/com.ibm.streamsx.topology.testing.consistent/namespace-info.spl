@@ -1,5 +1,0 @@
-/**
- * @exclude
-*/
-
-namespace com.ibm.streamsx.topology.testing.consistent;
