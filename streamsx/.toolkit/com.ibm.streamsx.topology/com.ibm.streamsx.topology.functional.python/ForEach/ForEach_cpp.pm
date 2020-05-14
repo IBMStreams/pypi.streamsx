@@ -122,6 +122,8 @@ sub main::generate($$) {
    print '#endif', "\n";
    print "\n";
    print '    try {', "\n";
+   print '      SplpyGIL lock;', "\n";
+   print "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
    # functional operator
@@ -219,7 +221,14 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '        streamsx::topology::Splpy::pyTupleForEach(funcop_->callable(), value);', "\n";
+   print '      PyObject *ret = pySplProcessTuple(funcop_->callable(), value);', "\n";
+   print "\n";
+   print '      if (ret == NULL) {', "\n";
+   print '        throw SplpyExceptionInfo::pythonError("for_each");', "\n";
+   print '      }', "\n";
+   print "\n";
+   print '      Py_DECREF(ret);', "\n";
+   print "\n";
    print '    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
    print '       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
    print '    }', "\n";

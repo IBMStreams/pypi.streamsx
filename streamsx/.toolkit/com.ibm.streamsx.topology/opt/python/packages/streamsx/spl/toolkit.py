@@ -18,7 +18,6 @@ Toolkits shipped with the IBM Streams product under
 must not be added through ``add_toolkit``.
 
 """
-from future.builtins import *
 
 __all__ = ['add_toolkit', 'add_toolkit_dependency']
 
@@ -65,6 +64,6 @@ def add_toolkit_dependency(topology, name, version):
     assert isinstance(topology, streamsx.topology.topology.Topology)
     tkinfo = dict()
     tkinfo['name'] = name
-    tkinfo['version'] = version
+    tkinfo['version'] = version.replace(' ', '')
     topology.graph._spl_toolkits.append(tkinfo)
 

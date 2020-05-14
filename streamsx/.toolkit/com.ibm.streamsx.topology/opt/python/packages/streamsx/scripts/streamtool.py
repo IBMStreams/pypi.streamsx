@@ -2,9 +2,6 @@
 # Licensed Materials - Property of IBM
 # Copyright IBM Corp. 2019
 
-from __future__ import print_function
-from future.builtins import *
-
 import sys
 import sysconfig
 import os
@@ -15,9 +12,11 @@ import urllib3
 import datetime
 import json
 import locale
+import re
 
 import streamsx.topology.context
 from streamsx.rest import Instance
+from streamsx.build import BuildService
 
 
 
@@ -550,6 +549,236 @@ def _getappconfig(instance, cmd_args, rc):
         print(key + "=" + json_value)
     return (rc, config_props)
 
+###########################################
+# rmtoolkit
+###########################################
+def _rmtoolkit_parser(subparsers):
+    toolkit_rm = subparsers.add_parser('rmtoolkit', help='Remove toolkits from a build service')
+    g1 = toolkit_rm.add_argument_group(title='Toolkit selection', description='Selects which toolkits will be removed.')
+    group = g1.add_mutually_exclusive_group(required=True)
+    group.add_argument('--id', '-i', help='Specifies the id of the toolkit to remove', metavar='toolkit-id')
+    group.add_argument('--name', '-n', help='Remove all toolkits with this name', metavar='toolkit-name')
+    group.add_argument('--regex', '-r', help='Remove all toolkits where the name matches the given regex pattern', metavar='toolkit-regex')
+    _user_arg(toolkit_rm)
+
+def _rmtoolkit(instance, cmd_args, rc):
+    # Get all toolkits from the build_server
+    build_server = BuildService.of_endpoint(verify=False if cmd_args.disable_ssl_verify else None)
+
+    tk_to_delete = []
+    return_message = None
+
+    # Find the toolkit matching toolkitid
+    if cmd_args.id:
+        try:
+            matching_toolkit = build_server.get_toolkit(cmd_args.id)
+            tk_to_delete.append(matching_toolkit)
+        except ValueError:
+            pass
+
+    # Find all toolkits with toolkitname
+    elif cmd_args.name:
+        remote_toolkits = build_server.get_toolkits()
+        matching_toolkits = [x for x in remote_toolkits if x.name == cmd_args.name]
+        if matching_toolkits:
+            tk_to_delete.extend(matching_toolkits)
+
+    # Find all toolkits where the name matches toolkitregex
+    elif cmd_args.regex:
+        matching_toolkits = build_server.get_toolkits(name=cmd_args.regex)
+        if matching_toolkits:
+            tk_to_delete.extend(matching_toolkits)
+
+    # If there are any toolkits to delete, delete them
+    for tk in tk_to_delete:
+        val = tk.delete()
+        if not val:
+            # If tk fails to delete, set error code and message
+            rc = 1
+            return_message = '1 or more toolkits failed to delete'
+
+    return (rc, return_message)
+
+###########################################
+# lstoolkit
+###########################################
+def _lstoolkit_parser(subparsers):
+    toolkit_ls = subparsers.add_parser('lstoolkit', help='List toolkits on the build service')
+    g1 = toolkit_ls.add_argument_group(title='Toolkit selection', description='Selects which toolkits will be listed.')
+    group = g1.add_mutually_exclusive_group(required=True)
+    group.add_argument('--all', '-a', action='store_true', help='List all toolkits')
+    group.add_argument('--id', '-i', help='Specifies the id of the toolkit to list', metavar='toolkit-id')
+    group.add_argument('--name', '-n', help='List all toolkits with this name', metavar='toolkit-name')
+    group.add_argument('--regex', '-r', help='List all toolkits where the name matches the given regex pattern', metavar='toolkit-regex')
+    _user_arg(toolkit_ls)
+
+def _lstoolkit(instance, cmd_args, rc):
+    # Get all toolkits from the build_service
+    build_server = BuildService.of_endpoint(verify=False if cmd_args.disable_ssl_verify else None)
+
+    return_message = None
+
+    # Find the toolkit matching toolkitid
+    if cmd_args.id:
+        try:
+            matching_toolkit = build_server.get_toolkit(cmd_args.id)
+            tk_to_list = [matching_toolkit]
+        except ValueError:
+            tk_to_list = []
+
+    # Find all toolkits with toolkitname
+    elif cmd_args.name:
+        remote_toolkits = build_server.get_toolkits()
+        tk_to_list = [x for x in remote_toolkits if x.name == cmd_args.name]
+
+    # Find all toolkits where the name matches toolkitregex
+    elif cmd_args.regex:
+        tk_to_list = build_server.get_toolkits(name=cmd_args.regex)
+    elif cmd_args.all:
+        tk_to_list = build_server.get_toolkits()
+
+    tk_to_list.sort(key=lambda tk : (tk.name, tk.version))
+
+    headers = ["Name", "Version", 'RequiredProductVersion']
+
+    # pre process the data so output is formatted nicely
+    h_length = [len(x) for x in headers] # header_length
+    for tk in tk_to_list:
+        h_length[0] = max(len(tk.name), h_length[0])
+        h_length[1] = max(len(tk.version), h_length[1])
+        h_length[2] = max(len(tk.requiredProductVersion), h_length[2])
+
+    fmt = '{:<{name_w}}  {:<{ver_w}}  {:<{pv_w}}'
+
+    print(fmt.format(headers[0], headers[1], headers[2],
+        name_w=h_length[0], ver_w=h_length[1], pv_w=h_length[2]))
+    for tk in tk_to_list:
+         print(fmt.format(tk.name, tk.version, tk.requiredProductVersion,
+             name_w=h_length[0], ver_w=h_length[1], pv_w=h_length[2]))
+
+    return (rc, return_message)
+
+###########################################
+# uploadtoolkit
+###########################################
+def _uploadtoolkit_parser(subparsers):
+    toolkit_up = subparsers.add_parser('uploadtoolkit', help='Upload a toolkit to a build service')
+    toolkit_up.add_argument('--path', '-p', help='Path to the toolkit to be uploaded', required=True)
+    _user_arg(toolkit_up)
+
+def _uploadtoolkit(instance, cmd_args, rc):
+    bs = BuildService.of_endpoint(verify=False if cmd_args.disable_ssl_verify else None)
+
+    return_message = None
+
+    tk = bs.upload_toolkit(cmd_args.path)
+    if tk is not None:
+        print('Toolkit with id {} uploaded from {}'.format(tk.id, cmd_args.path))
+    else:
+        return_message = 'Toolkit not uploaded from {}'.format(cmd_args.path)
+        print(return_message, file=sys.stderr )
+        rc = 1
+
+    return (rc, return_message)
+
+###########################################
+# updateoperators
+###########################################
+def _updateops_parser(subparsers):
+    update_ops = subparsers.add_parser('updateoperators', help='Adjust a job configuration while the job is running')
+    g1 = update_ops.add_argument_group(title='Job selection', description='One of these options must be chosen.')
+    group = g1.add_mutually_exclusive_group(required=True)
+    group.add_argument('jobid', help='Specifies a job ID.', nargs='?', metavar='jobid')
+    group.add_argument('--jobname', help='Specifies the name of the job.', metavar='job-name')
+    update_ops.add_argument('--jobConfig', '-g', help='Specifies the name of an external file that defines a job configuration overlay', metavar='file-name')
+    update_ops.add_argument('--parallelRegionWidth', help='Specifies a parallel region name and its width', metavar='parallelRegionName=width')
+    update_ops.add_argument('--force', action='store_true', help='Specifies whether to automatically stop the PEs that need to be stopped', default=False)
+
+    _user_arg(update_ops)
+
+def _updateops(instance, cmd_args, rc):
+    return_message = None
+    job_config_json = None
+    job = None
+
+    # Check that job w/ jobID or jobname exists
+    if cmd_args.jobid:
+        job = instance.get_job(id=str(cmd_args.jobid))
+    elif cmd_args.jobname:
+        jobs = instance.get_jobs(name=str(cmd_args.jobname))
+        if jobs:
+            job = jobs[0]
+
+    # job doesn't exist, throw error
+    if not job:
+        return (1, "The job was not found")
+
+    if cmd_args.jobConfig:
+        with open(cmd_args.jobConfig) as fd:
+            job_config_json = json.load(fd)
+        # If empty JCO passed in, throw error
+        if not job_config_json:
+            return (1, 'JCO is empty')
+    elif cmd_args.parallelRegionWidth:
+        # If no JCO, but parallelRegionWidth arg passed in, create empty JCO and later populate w/ parallelRegionWidth
+        job_config_json = {}
+    else:
+        # No JCO or parallelRegionWidth arg, throw error
+        return (1, 'A JCO or parallelRegionWidth is required')
+
+
+    if cmd_args.parallelRegionWidth:
+        # Overrides the targetParallelRegion if already present in the JCO
+        # else, populate empty JCO w/ parallelRegionWidth
+        arr = cmd_args.parallelRegionWidth.split('=')
+        if len(arr) != 2:
+            raise ValueError("The format of the following submission-time parameter is not valid: {}. The correct syntax is: <name>=<value>".format(arr))
+        name, width = arr[0], arr[1]
+
+        entry = {'targetParallelRegion': {'regionName': name, 'newWidth': int(width)}}
+
+        # If JCO is empty, and parallelRegionWidth arg is present, create JCO with arg
+        if not job_config_json:
+            job_config_json = {
+                'jobConfigOverlays' : [
+                    {'configInstructions' : {'adjustmentSection': [entry]}
+                    }
+                ]
+            }
+        else:
+            # Non-empty JCO, and parallelRegionWidth arg is present, override existing in JCO
+
+            # jobConfigOverlays is an array, where only the first jobConfigOverlay is supported
+            JCO = job_config_json['jobConfigOverlays'][0]
+            # Check if configInstructions already exists
+            if 'configInstructions' in JCO:
+                cfg_inst = JCO['configInstructions']
+                # Overwrite adjustmentSection, since only 1 parallelRegion can be specified
+                cfg_inst['adjustmentSection'] = [entry]
+            else:
+                JCO['configInstructions'] = {'adjustmentSection': [entry]}
+
+    # If --force present, force PE to stop
+    if cmd_args.force:
+        JCO = job_config_json['jobConfigOverlays'][0]
+        JCO['operationConfig'] = {"forcePeStopped": True}
+
+    job_config = streamsx.topology.context.JobConfig.from_overlays(job_config_json)
+    json_result = job.update_operators(job_config)
+
+    # --- 1/13/20 JSON result is incorrect until 1Q20 fix ---
+    # if json_result:
+    #     file_name = str(job.name) + '_' + str(job.id) + '_config.json'
+    #     with open(file_name, 'w') as outfile:
+    #         json.dump(json_result, outfile)
+
+    if json_result !=0:
+        return (1, 'Update operators failed')
+    else:
+        print('Update operators was started on the {} instance.'.format(instance.id))
+        # print('The operator configuration results were written to the following file: {}'.format(file_name))
+
+    return (rc, return_message)
 
 def run_cmd(args=None):
     cmd_args = _parse_args(args)
@@ -570,6 +799,10 @@ def run_cmd(args=None):
     "mkappconfig": _mkappconfig,
     "chappconfig": _chappconfig,
     "getappconfig": _getappconfig,
+    "rmtoolkit": _rmtoolkit,
+    "lstoolkit": _lstoolkit,
+    "uploadtoolkit": _uploadtoolkit,
+    "updateoperators": _updateops,
     }
 
     extra_info = None
@@ -605,8 +838,17 @@ def _parse_args(args):
     _mkappconfig_parser(subparsers)
     _chappconfig_parser(subparsers)
     _getappconfig_parser(subparsers)
+    _rmtoolkit_parser(subparsers)
+    _lstoolkit_parser(subparsers)
+    _uploadtoolkit_parser(subparsers)
+    _updateops_parser(subparsers)
 
-    return cmd_parser.parse_args(args)
+    cmd_args = cmd_parser.parse_args(args)
+    if cmd_args.subcmd is None:
+        cmd_parser.print_help()
+        exit(0)
+    else:
+        return cmd_args
 
 def _user_arg(parser):
     parser.add_argument('--User', '-U', help='Specifies an IBM Streams user ID that has authority to run the command.', metavar='user')

@@ -1,37 +1,18 @@
 # coding=utf-8
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2015,2019
+# Copyright IBM Corp. 2015,2020
 """
 
-Context for submission of applications.
-
-********
-Overview
-********
-
-The main function is :py:func:`submit` to submit
-a :py:class:`~streamsx.topology.topology.Topology`
-to a Streaming Analytics service or IBM® Streams instance for execution.
+Context for submission and build of topologies.
 
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import absolute_import
-try:
-    from future import standard_library
-    standard_library.install_aliases()
-except (ImportError, NameError):
-    # nothing to do here
-    pass
-from future.builtins import *
-
-__all__ = ['ContextTypes', 'ConfigParams', 'JobConfig', 'SubmissionResult', 'submit']
+__all__ = ['ContextTypes', 'ConfigParams', 'JobConfig', 'SubmissionResult', 'submit', 'build', 'run']
 
 import logging
 import os
 import os.path
+import shutil
 import json
 import platform
 import subprocess
@@ -73,12 +54,12 @@ def submit(ctxtype, graph, config=None, username=None, password=None):
     Args:
         ctxtype(str): Type of context the application will be submitted to. A value from :py:class:`ContextTypes`.
         graph(Topology): The application topology to be submitted.
-        config(dict): Configuration for the submission.
+        config(dict): Configuration for the submission, augmented with values such as a :py:class:`JobConfig` or keys from :py:class:`ConfigParams`.
         username(str): Deprecated: Username for the Streams REST api. Use environment variable ``STREAMS_USERNAME`` if using user-password authentication.
         password(str): Deprecated: Password for `username`. Use environment variable ``STREAMS_PASSWORD`` if using user-password authentication.
 
     Returns:
-        SubmissionResult: Result of the submission. For details of what is contained see the :py:class:`ContextTypes`
+        SubmissionResult: Result of the submission. Content depends on :py:class:`ContextTypes`
         constant passed as `ctxtype`.
     """
     streamsx._streams._version._mismatch_check(__name__)
@@ -86,8 +67,6 @@ def submit(ctxtype, graph, config=None, username=None, password=None):
 
     if not graph.operators:
         raise ValueError("Topology {0} does not contain any streams.".format(graph.topology.name))
-    if ctxtype == ContextTypes.STANDALONE_BUNDLE:
-        warnings.warn("Use ContextTypes.BUNDLE", DeprecationWarning, stacklevel=2)
 
     if username or password:
         warnings.warn("Use environment variables STREAMS_USERNAME and STREAMS_PASSWORD", DeprecationWarning, stacklevel=2)
@@ -96,6 +75,53 @@ def submit(ctxtype, graph, config=None, username=None, password=None):
     sr = SubmissionResult(context_submitter.submit())
     sr._submitter = context_submitter
     return sr
+
+def build(topology, config=None, dest=None, verify=None):
+    """
+    Build a topology to produce a Streams application bundle.
+
+    Builds a topology using :py:func:`submit` with context type :py:const:`~ContextTypes.BUNDLE`. The result is a sab file on the local file system along
+    with a job config overlay file matching the application.
+
+    The build uses a build service or a local install, see :py:const:`~ContextTypes.BUNDLE` for details.
+
+    Args:
+        topology(Topology): Application topology to be built.
+        config(dict): Configuration for the build.
+        dest(str): Destination directory for the sab and JCO files. Default is context specific.
+        verify: SSL verification used by requests when using a build service. Defaults to enabling SSL verification.
+
+    Returns:
+        3-element tuple containing
+
+        - **bundle_path** (*str*): path to the bundle (sab file) or ``None`` if not created.
+        - **jco_path** (*str*): path to file containing the job config overlay for the application or ``None`` if not created.
+        - **result** (*SubmissionResult*): value returned from ``submit``.
+
+    .. seealso:: :py:const:`~ContextTypes.BUNDLE` for details on how to configure the build service to use.
+    .. versionadded:: 1.14
+    """
+    if verify is not None:
+        config = config.copy() if config else dict()
+        config[ConfigParams.SSL_VERIFY] = verify
+
+    sr = submit(ContextTypes.BUNDLE, topology, config=config)
+    if 'bundlePath' in sr:
+        if dest:
+            bundle = sr['bundlePath']
+            bundle_dest = os.path.join(dest, os.path.basename(bundle))
+            if os.path.exists(bundle_dest): os.remove(bundle_dest)
+            shutil.move(bundle, dest)
+            sr['bundlePath'] = bundle_dest
+
+            jco = sr['jobConfigPath']
+            jco_dest = os.path.join(dest, os.path.basename(jco))
+            if os.path.exists(jco_dest): os.remove(jco_dest)
+            shutil.move(jco, dest)
+            sr['jobConfigPath'] = jco_dest
+        return sr['bundlePath'], sr['jobConfigPath'], sr
+
+    return None, None, sr
 
 
 
@@ -110,6 +136,12 @@ class _BaseSubmitter(object):
             # Make copy of config to avoid modifying
             # the callers config
             self.config.update(config)
+            # When SERVICE_DEFINITION is a String, it is assumed that 
+            # it is JSON SAS credentials, which must be converted to a JSON object
+            service_def = self.config.get(ConfigParams.SERVICE_DEFINITION)
+            if service_def:
+                if isinstance(service_def, str):
+                    self.config[ConfigParams.SERVICE_DEFINITION] = json.loads(service_def)
         self.config['contextType'] = str(self.ctxtype)
         if 'originator' not in self.config:
             self.config['originator'] = 'topology-' + __version__ + ':python-' + platform.python_version()
@@ -167,16 +199,19 @@ class _BaseSubmitter(object):
         if remote_context:
             submit_class = "com.ibm.streamsx.topology.context.remote.RemoteContextSubmit"
             try:
-                get_ipython()
+                # Verify we are in a IPython env.
+                get_ipython() # noqa : F821
                 import ipywidgets as widgets
+                logger.debug("ipywidgets available - creating IntProgress")
                 progress_bar = widgets.IntProgress(
                     value=0,
                     min=0, max=10, step=1,
                     description='Initializing',
                     bar_style='info', orientation='horizontal',
                     style={'description_width':'initial'})
+                logger.debug("ipywidgets available - created IntProgress")
                 try:
-                    display(progress_bar)
+                    display(progress_bar) # noqa : F821
                     def _show_progress(msg):
                         if msg is True:
                             progress_bar.value = progress_bar.max
@@ -190,8 +225,10 @@ class _BaseSubmitter(object):
                         progress_bar.description = msg[3]
                     progress_fn = _show_progress
                 except:
+                    logger.debug("ipywidgets IntProgress error: %s", sys.exc_info()[1])
                     pass
             except:
+                logger.debug("ipywidgets not available: %s", sys.exc_info()[1])
                 pass
         else:
             submit_class = "com.ibm.streamsx.topology.context.local.StreamsContextSubmit"
@@ -675,10 +712,8 @@ class _SubmitContextFactory(object):
         if ctxtype == ContextTypes.DISTRIBUTED:
             logger.debug("Selecting the DISTRIBUTED context for submission")
             return _get_distributed_submitter(self.config, self.graph, self.username, self.password)
-        elif ctxtype == ContextTypes.ANALYTICS_SERVICE or ctxtype == ContextTypes.STREAMING_ANALYTICS_SERVICE:
+        elif ctxtype == ContextTypes.STREAMING_ANALYTICS_SERVICE:
             logger.debug("Selecting the STREAMING_ANALYTICS_SERVICE context for submission")
-            if sys.version_info.major == 2:
-                raise RuntimeError("The STREAMING_ANALYTICS_SERVICE context requires Python 3")
             ctxtype = ContextTypes.STREAMING_ANALYTICS_SERVICE
             return _StreamingAnalyticsSubmitter(ctxtype, self.config, self.graph)
         elif ctxtype == 'BUNDLE':
@@ -708,18 +743,12 @@ def _delete_json(submitter):
 def _print_process_stdout(process):
     try:
         while True:
-            if sys.version_info.major == 2:
-                sout = codecs.getwriter('utf8')(sys.stdout)
             line = process.stdout.readline()
             if len(line) == 0:
                 process.stdout.close()
                 break
             line = line.decode("utf-8").strip()
-            if sys.version_info.major == 2:
-                sout.write(line)
-                sout.write("\n")
-            else:
-                print(line)
+            print(line)
     except:
         logger.error("Error reading from Java subprocess stdout stream.")
         raise
@@ -741,8 +770,6 @@ _JAVA_LOG_LVL = {
 # a logger or stderr
 def _print_process_stderr(process, submitter, progress_fn):
     try:
-        if sys.version_info.major == 2:
-            serr = codecs.getwriter('utf8')(sys.stderr)
         while True:
             line = process.stderr.readline()
             if len(line) == 0:
@@ -756,11 +783,7 @@ def _print_process_stderr(process, submitter, progress_fn):
                     continue
                 logger.log(_JAVA_LOG_LVL[em[0]], em[1])
                 continue
-            if sys.version_info.major == 2:
-                serr.write(line)
-                serr.write("\n")
-            else:
-                print(line, file=sys.stderr)
+            print(line, file=sys.stderr)
     except:
         logger.error("Error reading from Java subprocess stderr stream.")
         raise
@@ -810,13 +833,8 @@ class ContextTypes(object):
     Environment variables:
         These environment variables define how the application is built and submitted.
 
-        * **STREAMS_INSTALL** - (optional) Location of a IBM Streams installation (4.0.1 or later). The install must be running on RedHat/CentOS 6 and `x86_64` architecture.
+        * **STREAMS_INSTALL** - (optional) Location of a IBM Streams installation (4.0.1 or later). The install must be running on RedHat/CentOS 7 and `x86_64` architecture.
 
-    """
-    ANALYTICS_SERVICE = 'ANALYTICS_SERVICE'
-    """Synonym for :py:const:`STREAMING_ANALYTICS_SERVICE`.
-
-    .. deprecated:: Use :py:const:`STREAMING_ANALYTICS_SERVICE`.
     """
     DISTRIBUTED = 'DISTRIBUTED'
     """Submission to an IBM Streams instance.
@@ -829,10 +847,10 @@ class ContextTypes(object):
     to an Streams service instance running in the same Cloud Pak for
     Data cluster as the Jupyter notebook or script declaring the application.
 
-    The instance is specified in the configuration passed into :py:func:`submit`. The configuration may be code injected from the list of services or manually created. The code that selects a service instance by name is::
+    The instance is specified in the configuration passed into :py:func:`submit`. The code that selects a service instance by name is::
 
         from icpd_core import icpd_util
-        cfg = icpd_util.get_service_instance_details(name='instanceName')
+        cfg = icpd_util.get_service_instance_details(name='instanceName', instance_type="streams")
 
         topo = Topology()
         ...
@@ -862,8 +880,8 @@ class ContextTypes(object):
     Environment variables:
         These environment variables define how the application is built and submitted.
 
-        * **STREAMS_BUILD_URL** - Streams build service URL, e.g. when the service is exposed as node port: `https://<EXTERNAL-IP>:<NODE-PORT>`
-        * **STREAMS_REST_URL** - Streams SWS service (REST API) URL, e.g. when the service is exposed as node port: `https://<EXTERNAL-IP>:<NODE-PORT>`
+        * **STREAMS_BUILD_URL** - Streams build service URL, e.g. when the service is exposed as node port: `https://<NODE-IP>:<NODE-PORT>`
+        * **STREAMS_REST_URL** - Streams SWS service (REST API) URL, e.g. when the service is exposed as node port: `https://<NODE-IP>:<NODE-PORT>`
         * **STREAMS_USERNAME** - (optional) User name to submit the job as, defaulting to the current operating system user name.
         * **STREAMS_PASSWORD** - Password for authentication.
 
@@ -910,26 +928,73 @@ class ContextTypes(object):
     BUNDLE = 'BUNDLE'
     """Create a Streams application bundle.
 
-    The `Topology` is compiled locally to produce Streams application bundle (sab file).
+    The `Topology` is compiled to produce Streams application bundle (sab file).
 
     The resultant application can be submitted to:
         * Streaming Analytics service using the Streams console or the Streaming Analytics REST api.
         * IBM Streams instance using the Streams console, JMX api or command line ``streamtool submitjob``.
-        * Executed standalone for development or testing (when built with IBM Streams 4.2 or later).
+        * Executed standalone for development or testing.
 
     The bundle must be built on the same operating system version and architecture as the intended running
-    environment. For Streaming Analytics service this is currently RedHat/CentOS 6 and `x86_64` architecture.
+    environment. For Streaming Analytics service this is currently RedHat/CentOS 7 and `x86_64` architecture.
+    
+    .. rubric:: IBM Cloud Pak for Data integated configuration
+
+    *Projects (within cluster)*
+
+    The `Topology` is compiled using the Streams build service for 
+    a Streams service instance running in the same Cloud Pak for
+    Data cluster as the Jupyter notebook or script declaring the application.
+
+    The instance is specified in the configuration passed into :py:func:`submit`. The code that selects a service instance by name is::
+
+        from icpd_core import icpd_util
+        cfg = icpd_util.get_service_instance_details(name='instanceName', instance_type="streams")
+
+        topo = Topology()
+        ...
+        submit(ContextTypes.BUNDLE, topo, cfg)
+
+    The resultant `cfg` dict may be augmented with other values such as
+    keys from :py:class:`ConfigParams`.
+
+    *External to cluster or project*
+
+    The `Topology` is compiled using the Streams build service for a Streams service instance running in Cloud Pak for Data.
 
     Environment variables:
-        This environment variables define how the application is built.
+        These environment variables define how the application is built and submitted.
 
-        * **STREAMS_INSTALL** - Location of a IBM Streams installation (4.0.1 or later).
+        * **CP4D_URL** - Cloud Pak for Data deployment URL, e.g. `https://cp4d_server:31843`
+        * **STREAMS_INSTANCE_ID** - Streams service instance name.
+        * **STREAMS_USERNAME** - (optional) User name to submit the job as, defaulting to the current operating system user name.
+        * **STREAMS_PASSWORD** - Password for authentication.
+
+    .. rubric:: IBM Cloud Pak for Data standalone configuration
+
+    The `Topology` is compiled using the Streams build service.
+
+    Environment variables:
+        These environment variables define how the application is built.
+
+        * **STREAMS_BUILD_URL** - Streams build service URL, e.g. when the service is exposed as node port: `https://<NODE-IP>:<NODE-PORT>`
+        * **STREAMS_USERNAME** - (optional) User name to submit the job as, defaulting to the current operating system user name.
+        * **STREAMS_PASSWORD** - Password for authentication.
+
+    .. rubric:: IBM Streams on-premise 4.2 & 4.3
+    
+    The `Topology` is compiled using a local IBM Streams installation.
+
+    Environment variables:
+        These environment variables define how the application is built.
+
+        * **STREAMS_INSTALL** - Location of a local IBM Streams installation.
 
     """
     TOOLKIT = 'TOOLKIT'
     """Creates an SPL toolkit.
 
-    `Topology` applications are translated to SPL applications before compilation into an Streams application
+    `Topology` applications are implemented as an SPL application before compilation into an Streams application
     bundle. This context type produces the intermediate SPL toolkit that is input to the SPL compiler for
     bundle creation.
 
@@ -946,26 +1011,6 @@ class ContextTypes(object):
     .. note::
 
         `BUILD_ARCHIVE` is typically only used when diagnosing issues with bundle generation.
-    """
-
-    STANDALONE_BUNDLE = 'STANDALONE_BUNDLE'
-    """Create a Streams application bundle for standalone execution.
-
-    The `Topology` is compiled locally to produce Streams standalone application bundle (sab file).
-
-    The resultant application can be submitted to:
-        * Executed standalone for development or testing.
-
-    The bundle must be built on the same operating system version and architecture as the intended running
-    environment. For Streaming Analytics service this is currently RedHat/CentOS 6 and `x86_64` architecture.
-
-    Environment variables:
-        This environment variables define how the application is built.
-
-        * **STREAMS_INSTALL** - Location of a IBM Streams installation (4.0.1 or 4.1.x).
-
-    .. deprecated:: IBM Streams 4.2
-        Use :py:const:`BUNDLE`.
     """
 
 
@@ -1029,8 +1074,12 @@ class ConfigParams(object):
     """Streaming Analytics service definition.
     Identifies the Streaming Analytics service to use. The definition can be one of
 
-        * The `service credentials` copied from the `Service credentials` page of the service console (not the Streams console). Credentials are provided in JSON format. They contain such as the API key and secret, as well as connection information for the service. 
-        * A JSON object (`dict`) of the form: ``{ "type": "streaming-analytics", "name": "service name", "credentials": {...} }`` with the `service credentials` as the value of the ``credentials`` key.
+        * The `service credentials` copied from the `Service credentials` page of the service console (not the Streams console).
+          Credentials are provided in JSON format. They contain such as the API key and secret, as well as connection information for the service.
+        * A JSON object (`dict`) created from the `service credentials`, for example with `json.loads(service_credentials)`
+        * A JSON object (`dict`) of the form: ``{ "type": "streaming-analytics", "name": "service name", "credentials": ... }``
+          with the `service credentials` as the value of the ``credentials`` key. The value of the ``credentials`` key can
+          be a JSON object (`dict`) or a `str` copied from the `Service credentials` page of the service console.
 
     This key takes precedence over :py:const:`VCAP_SERVICES` and :py:const:`SERVICE_NAME`.
 
@@ -1056,6 +1105,11 @@ class ConfigParams(object):
         Options that modify the requested submission context (e.g. setting
         a different main composite) or deprecated options should not be specified.
     .. versionadded:: 1.12.10
+    """
+
+    _SPLMM_OPTIONS = 'topology.internal.splmm_options'
+    """
+    TBD
     """
 
 
@@ -1311,7 +1365,7 @@ class JobConfig(object):
         return config
 
     def as_overlays(self):
-        """Return this jobs configuration as a complete job configuration overlays object.
+        """Return this job configuration as a complete job configuration overlays object.
 
         Converts this job configuration into the full format supported by IBM Streams.
         The returned `dict` contains:
@@ -1395,7 +1449,28 @@ class JobConfig(object):
 
 class SubmissionResult(object):
     """Passed back to the user after a call to submit.
-    Allows the user to use dot notation to access dictionary elements."""
+    Allows the user to use dot notation to access dictionary elements.
+
+    Example accessing result files when using :py:const:`~ContextTypes.BUNDLE`::
+
+        submission_result = submit(ContextTypes.BUNDLE, topology, config)
+        print(submission_result.bundlePath)
+        ...
+        os.remove(submission_result.bundlePath)
+        os.remove(submission_result.jobConfigPath)
+
+    Result contains the generated toolkit location when using :py:const:`~ContextTypes.TOOLKIT`::
+
+        submission_result = submit(ContextTypes.TOOLKIT, topology, config)
+        print(submission_result.toolkitRoot)
+
+    Result when using :py:const:`~ContextTypes.DISTRIBUTED` depends if the `Topology` is compiled locally and the resultant Streams application bundle
+    (sab file) is submitted to an IBM Streams instance or if the `Topology` is compiled on build-service and submitted to an instance in Cloud Pak for Data::
+
+        submission_result = submit(ContextTypes.DISTRIBUTED, topology, config)
+        print(submission_result)
+
+"""
     def __init__(self, results):
         self.results = results
         self._submitter = None
@@ -1437,6 +1512,8 @@ class SubmissionResult(object):
             return
   
         try:
+            # Verify we are in a IPython env.
+            get_ipython() # noqa : F821
             import ipywidgets as widgets
             if not description:
                 description = 'Cancel job: '
@@ -1463,7 +1540,7 @@ class SubmissionResult(object):
                     raise
  
             button.on_click(_cancel_job_click)
-            display(vb)
+            display(vb) # noqa : F821
         except:
             pass
 
@@ -1511,7 +1588,7 @@ def _vcap_from_service_definition(service_def):
         credentials = service_def
 
     service = {}
-    service['credentials'] = credentials
+    service['credentials'] = credentials if isinstance(credentials, dict) else json.loads(credentials)
     service['name'] = _name_from_service_definition(service_def)
     vcap = {'streaming-analytics': [service]}
     return vcap
@@ -1536,3 +1613,42 @@ class _SasBundleSubmitter(_BaseSubmitter):
         env.pop('STREAMS_INSTANCE_ID', None)
         env.pop('STREAMS_INSTALL', None)
         return env
+
+def run(topology, config=None, job_name=None, verify=None, ctxtype=ContextTypes.DISTRIBUTED):
+    """
+    Run a topology in a distributed Streams instance.
+
+    Runs a topology using :py:func:`submit` with context type :py:const:`~ContextTypes.DISTRIBUTED` (by default). The result is running Streams job.
+
+    Args:
+        topology(Topology): Application topology to be run.
+        config(dict): Configuration for the build.
+        job_name(str): Optional job name. If set will override any job name in `config`.
+        verify: SSL verification used by requests when using a build service. Defaults to enabling SSL verification.
+        ctxtype(str): Context type for submission.
+
+    Returns:
+        2-element tuple containing
+
+        - **job** (*Job*): REST binding object for the running job or ``None`` if no job was submitted.
+        - **result** (*SubmissionResult*): value returned from ``submit``.
+
+    .. seealso:: :py:const:`~ContextTypes.DISTRIBUTED` for details on how to configure the Streams instance to use.
+    .. versionadded:: 1.14
+    """
+    config = config.copy() if config else dict()
+    if job_name:
+        if ConfigParams.JOB_CONFIG in config:
+            # Ensure the original is not changed
+            jc = JobConfig.from_overlays(config[ConfigParams.JOB_CONFIG].as_overlays())
+            jc.job_name = job_name
+            jc.add(config)
+        else:
+            JobConfig(job_name=job_name).add(config)
+
+    if verify is not None:
+        config[ConfigParams.SSL_VERIFY] = verify
+
+    sr = submit(ctxtype, topology, config=config)
+    return sr.job, sr
+

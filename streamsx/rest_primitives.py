@@ -13,20 +13,21 @@ Contains classes representing primitive Streams objects, such as
 :py:class:`Instance`, :py:class:`Job`, :py:class:`PE`, etc.
 
 """
-from future.builtins import *
 
-__all__ = ['ActiveService', 'ActiveVersion', 'ApplicationBundle', 'ApplicationConfiguration', 'Domain', 'ExportedStream', 'Host', 'ImportedStream', 'Installation', 'Instance', 'Job', 'Metric', 'OperatorConnection', 'OperatorInputPort', 'OperatorOutputPort', 'Operator', 'PEConnection', 'PE', 'PublishedTopic', 'ResourceAllocation', 'Resource', 'ResourceTag', 'RestResource', 'StreamingAnalyticsService', 'Toolkit', 'ViewItem', 'View', 'get_view_obj']
+__all__ = ['ActiveService', 'ActiveVersion', 'ApplicationBundle', 'ApplicationConfiguration', 'Domain', 'ExportedStream', 'Host', 'ImportedStream', 'Installation', 'Instance', 'Job', 'Metric', 'OperatorConnection', 'OperatorInputPort', 'OperatorOutputPort', 'Operator', 'PEConnection', 'PE', 'PublishedTopic', 'ResourceAllocation', 'Resource', 'ResourceTag', 'RestResource', 'StreamingAnalyticsService', 'Toolkit', 'ViewItem', 'View']
 
 import logging
 import requests
-import requests.exceptions
+from requests import RequestException
+from requests import Timeout
 import queue
 import os
 import threading
 import time
 import json
 import re
-import time
+import socket
+import numbers
 import warnings
 import xml.etree.ElementTree as ElementTree
 
@@ -44,6 +45,18 @@ import streamsx.rest
 ##############################################################
 
 logger = logging.getLogger('streamsx.rest')
+_REST_CONNECT_TIMEOUT = 30.0     # timeout in seconds for creating a connection (including TLS)
+# to specify no timeout, use 'None' as value
+_TIMEOUTS = {
+    'GET': (_REST_CONNECT_TIMEOUT, 90.0),      # various resources, also large resorces like logs 
+    'POST': (_REST_CONNECT_TIMEOUT, 120.0),    # authentication, upload bundle, submit bundle, mk app config
+    'PUT': (_REST_CONNECT_TIMEOUT, 120.0),     # start/stop instance SASv1
+    'PATCH': (_REST_CONNECT_TIMEOUT, 120.0),   # start/stop instance SASv2, update app config, update operators
+    'DELETE': (_REST_CONNECT_TIMEOUT, 120.0),  # del toolkit, del app config, cancel job
+    'HEAD': (_REST_CONNECT_TIMEOUT, 120.0),    # not used
+    'OPTIONS': (_REST_CONNECT_TIMEOUT, 120.0)  # not used
+    }
+
 
 def _get_username(username=None):
     if not username:
@@ -79,6 +92,35 @@ class _ResourceElement(object):
         json_rep(dict): The JSON representation of the resource, its properties can be accessed directly using dot
             notation on the object.
     """
+    @classmethod
+    def _new(cls, json_rep, rest_client, ts=None):
+        """
+        Indirect creation of a new instance of this class
+        to allow instance reuse to avoid REST calls.
+        """
+        if cls._USE_CACHE:
+            element = rest_client._cache_find(cls, json_rep['self'])
+            if element:
+                element.json_rep = json_rep
+                element._last_modified = ts if ts else time.time()
+                return element
+        element = cls(json_rep, rest_client)
+        element._last_modified = ts if ts else time.time()
+        rest_client._cache_add(cls, element)
+        return element
+
+    @classmethod
+    def _fetch(cls, url, rest_client):
+        element = rest_client._cache_find(cls, url)
+        if element:
+            age = time.time() - element._last_modified
+            if age > 2:
+                element.refresh()
+            return element
+        return cls._new(rest_client.make_request(url), rest_client)
+
+    _USE_CACHE = True
+
     def __init__(self, json_rep, rest_client):
         """
         Args:
@@ -88,6 +130,7 @@ class _ResourceElement(object):
         self.rest_client = rest_client
         self.rest_self = json_rep.get('self', None)
         self.json_rep = json_rep
+        self._last_modified = 0
 
     def __str__(self):
         return pformat(self.__dict__)
@@ -113,6 +156,7 @@ class _ResourceElement(object):
         """Refresh the resource and update the attributes to reflect the latest status.
         """
         self.json_rep = self.rest_client.make_request(self.rest_self)
+        self._last_modified = time.time()
 
     def _get_elements(self, url, key, eclass, id=None, name=None):
         """Get elements matching `id` or `name`
@@ -134,7 +178,8 @@ class _ResourceElement(object):
             raise ValueError("id and name cannot specified together")
 
         json_elements = self.rest_client.make_request(url)[key]
-        return [eclass(element, self.rest_client) for element in json_elements
+        ts = time.time()
+        return [eclass._new(element, self.rest_client, ts=ts) for element in json_elements
                 if _exact_resource(element, id) and _matching_resource(element, name)]
 
     def _get_element_by_id(self, url, key, eclass, id):
@@ -162,8 +207,8 @@ class _ResourceElement(object):
 def _handle_http_errors(res):
     # HTTP error responses are 4xx, server errors are 5xx
     if res.status_code >= 400:
-        #logger.error("Response returned with error code: " + str(res.status_code))
-        #logger.error(res.text)
+        # logger.error("Response returned with error code: " + str(res.status_code))
+        # logger.error(res.text)
         res.raise_for_status()
 
 
@@ -171,10 +216,91 @@ class _StreamsRestClient(object):
     _blocked_ssl_warn = False
 
     """Session connection with the Streams REST API
+    
+    Args:
+        auth: A Callable that adds Authentication header(s) to requests
+        timeouts (Number|tuple|dict): timeouts
+        
+    Example:
+        >>> c = _StreamsRestClient(auth=None)               # default timeouts
+        >>> c = _StreamsRestClient(auth=None, timeouts=60)  # 60 seconds for all
+        >>> c = _StreamsRestClient(auth=None, timeouts=(30, 120))  # 30 seconds connect timeout, 120 seconds REST timeout
+        >>> # specify some timeouts, for all others, the default apply
+        >>> c = _StreamsRestClient(auth=None, timeouts={'GET': (10, 30), 'Post': (10, 60), 'options': 30, 'HEAD': None})
+        >>> c._timeouts
     """
-    def __init__(self, auth):
+    def __init__(self, auth, timeouts=_TIMEOUTS):
         self.session = requests.Session()
         self.session.auth = auth
+        self._cache = {}
+        self._cache_lock = threading.Lock()
+        _requests = _TIMEOUTS.keys() #['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+        if timeouts is None:
+            # intentionally no timeouts
+            self._timeouts = {key: None for key in _requests}
+        elif isinstance(timeouts, numbers.Number) or isinstance(timeouts, tuple):
+            # single timeout for all request methods
+            self._timeouts = {key: timeouts if isinstance(timeouts, tuple) else (float(timeouts), float(timeouts)) for key in _requests}
+        elif isinstance(timeouts, dict):
+            # individual timeouts per request method
+            self._timeouts = _TIMEOUTS.copy()
+            for key, val in timeouts.items():
+                key_upper = key.upper()
+                if key_upper in _requests:
+                    self._timeouts[key_upper] = val if val is None or isinstance(val, tuple) else (float(val), float(val))
+        else:
+            raise TypeError(timeouts)
+
+    def timeout_for(self, request_method):
+        """Returns the timeout for a request method. 
+        
+        Args:
+            request_method (str): the request method. Valid values are 'GET', 'POST', 'PUT',
+                'PATCH', 'DELETE', 'HEAD', and 'OPTIONS'. The request_method is case-insensitive.
+
+        Returns:
+            tuple: the timeouts for the given request method
+        """
+        return self._timeouts.get(request_method.upper(), None)
+
+    def _cache_find(self, cls, url):
+        if cls._USE_CACHE:
+            try:
+                self._cache_lock.acquire()
+                elements = self._cache.get(cls)
+                if elements is not None:
+                    return elements.get(url)
+            finally:
+                self._cache_lock.release()
+
+    def _cache_add(self, cls, element):
+        if cls._USE_CACHE:
+            try:
+                self._cache_lock.acquire()
+                elements = self._cache.get(cls)
+                if elements is None:
+                    elements = {}
+                    self._cache[cls] = elements
+                elements[element.rest_self] = element
+            finally:
+                self._cache_lock.release()
+
+    def _cache_job_cancel(self, job):
+        expire = time.time() - 60.0
+        url = job.rest_self
+        c = 0
+        try:
+            self._cache_lock.acquire()
+            elements = self._cache.get(job.__class__)
+            elements.pop(url, None)
+            for ecls, elements in self._cache.items():
+                if ecls == job.__class__:
+                    continue
+                remove = [u for u,e in elements.items() if e.json_rep.get('job') == url or e._last_modified < expire]
+                for u in remove:
+                    del elements[u]
+        finally:
+            self._cache_lock.release()
 
     def _block_ssl_warn(self):
         if self.session.verify is False and not _StreamsRestClient._blocked_ssl_warn:
@@ -186,20 +312,21 @@ class _StreamsRestClient(object):
     # Create session to reuse TCP connection
     # https authentication
     @staticmethod
-    def _of_basic(username, password):
+    def _of_basic(username, password, timeouts=_TIMEOUTS):
         """
         Args:
             username(str): The username of an authorized Streams user.
             password(str): The password associated with the username.
+            timeouts (Number|tuple|dict): timeouts for connect and REST requests
         """
         auth = (username, password)
-        return _StreamsRestClient(auth)
+        return _StreamsRestClient(auth, timeouts=timeouts)
     
     def make_request(self, url):
         logger.debug('Beginning a REST request to: ' + url)
         self._block_ssl_warn()
         headers={ 'Accept': 'application/json'}
-        res = self.session.get(url, headers=headers, verify=self.session.verify)
+        res = self.session.get(url, headers=headers, verify=self.session.verify, timeout=self._timeouts['GET'])
         _handle_http_errors(res)
         return res.json()
 
@@ -209,7 +336,7 @@ class _StreamsRestClient(object):
         headers = {}
         if mimetype:
             headers['Accept'] = mimetype
-        res = self.session.get(url, stream=True, headers=headers, verify=self.session.verify)
+        res = self.session.get(url, stream=True, headers=headers, verify=self.session.verify, timeout=self._timeouts['GET'])
         _handle_http_errors(res)
         return res
 
@@ -280,6 +407,7 @@ class _ICPDAuthHandler(_BearerAuthHandler):
 
     def _refresh_auth(self):
         logger.debug("ICP4D:Token refresh:")
+        # import must be here since this code is specific for ICP4D
         from icpd_core import icpd_util
         self.token = icpd_util.get_instance_token(name=self._service_name)
         self._auth_expiry_time = time.time() + 19*60
@@ -319,42 +447,83 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
         cluster_ip = es.netloc.split(':')[0] if ':' in es.netloc else es.netloc
 
         auth_url = up.urlunsplit(('https', cluster_ip + ':' + str(cluster_port), '/icp4d-api/v1/authorize', None, None))
-        r = requests.post(auth_url, json=pd, verify=self._verify)
+        r = requests.post(auth_url, json=pd, verify=self._verify, timeout=_TIMEOUTS['POST'])
         _handle_http_errors(r)
         token = r.json()['token']
 
         details_url = up.urlunsplit(
             ('https', cluster_ip + ':' + str(cluster_port), 'zen-data/v2/serviceInstance/details', 'displayName=' + self._service_name, None))
         r = requests.get(details_url,
-                         headers={"Authorization": "Bearer " + token}, verify=self._verify)
-
+                         headers={"Authorization": "Bearer " + token},
+                         verify=self._verify,
+                         timeout=_TIMEOUTS['GET'])
         sr = r.json()
+        mc = sr.get('_messageCode_')
+        if not mc or mc != 'success' or not 'requestObj' in sr:
+            raise RequestException('Query for Streams instance "' + self._service_name + '" failed: ' 
+                             + json.dumps(sr, sort_keys=True, indent=2, separators=(',', ': ')))
 
         sro = sr['requestObj']
 
-        service_id = sro['ID']
-        service_type = sro['ServiceInstanceType']
+        try:
+            service_id = sro['ID']
+            service_type = sro['ServiceInstanceType']
+            sca = sro['CreateArguments']
+        except KeyError as ke:
+            logger.critical('Mandatory JSON object missing in REST service response: requestObj/' + ke.args[0])
+            raise RequestException('Mandatory JSON object missing in REST service response: requestObj/' + ke.args[0])
+        
+        try:
+            metadata = sca['metadata']
+            connection_info = sca['connection-info']
+        except KeyError as ke:
+            logger.critical('Mandatory JSON object missing in REST service response: requestObj/CreateArguments/' + ke.args[0])
+            raise RequestException('Mandatory JSON object missing in REST service response: requestObj/CreateArguments/' + ke.args[0])
 
-        sca = sro['CreateArguments']
-        service_name = sca['metadata']['instance']['id']
-        connection_info = sca['connection-info']
+        try:
+            instance = metadata['instance']
+        except KeyError as ke:
+            logger.critical('Mandatory JSON object missing in REST service response: requestObj/CreateArguments/metadata/' + ke.args[0])
+            raise RequestException('Mandatory JSON object missing in REST service response: requestObj/CreateArguments/metadata/' + ke.args[0])
+
+        try:
+            service_name = instance['id']
+        except KeyError as ke:
+            logger.error('Mandatory JSON object missing in REST service response: requestObj/CreateArguments/metadata/instance/' + ke.args[0])
+            raise RequestException('mandatory JSON object missing in REST service response: requestObj/CreateArguments/metadata/instance/' + ke.args[0])
 
         service_token_url = up.urlunsplit(
             ('https', cluster_ip + ':' + str(cluster_port), 'zen-data/v2/serviceInstance/token', None, None))
         pd = {"serviceInstanceId": str(service_id)}
         r = requests.post(service_token_url, json=pd,
-                          headers={"Authorization": "Bearer " + token}, verify=self._verify)
+                          headers={"Authorization": "Bearer " + token}, verify=self._verify,
+                          timeout=_TIMEOUTS['POST'])
 
         service_token = r.json()['AccessToken']
         self.token = service_token
         self._auth_expiry_time = time.time() + 19 * 60
 
         # Convert the external endpoints to use the passed in cluster ip.
-        bu = up.urlsplit(connection_info['externalBuildEndpoint'])
-        build_url = up.urlunsplit((bu.scheme, cluster_ip + ':' + str(bu.port), bu.path, None, None))
+        ebe = connection_info['externalBuildEndpoint']
+        if ebe.startswith('https:'):
+            bu = up.urlsplit(ebe)
+            ebe_port = bu.port
+            ebe_path = bu.path
+        else: # CPD 2.5 switched to path-absolute
+            ebe_port = cluster_port
+            ebe_path = ebe
+            
+        build_url = up.urlunsplit(('https', cluster_ip + ':' + str(ebe_port), ebe_path, None, None))
 
-        ru = up.urlsplit(connection_info['externalRestEndpoint'])
-        streams_url = up.urlunsplit((bu.scheme, cluster_ip + ':' + str(ru.port), ru.path, None, None))
+        ere = connection_info['externalRestEndpoint']
+        if ere.startswith('https:'):
+            ru = up.urlsplit(ere)
+            ere_port = ru.port
+            ere_path = ru.path
+        else: # CPD 2.5 switched to path-absolute
+            ere_port = cluster_port
+            ere_path = ere
+        streams_url = up.urlunsplit(('https', cluster_ip + ':' + str(ere_port), ere_path, None, None))
 
         cfg = {
                 'type': 'streams',
@@ -382,7 +551,7 @@ class _JWTAuthHandler(_BearerAuthHandler):
         self.security_url = security_url
         self._cfg = self._create_cfg()
 
-    def _refresh_autH(self):
+    def _refresh_auth(self):
         logger.debug("JWTAuthHandler:Token refresh")
         self._cfg = self._create_cfg()
         logger.debug("JWT:Token refreshed:expiry: " + time.ctime(self._auth_expiry_time))
@@ -392,8 +561,9 @@ class _JWTAuthHandler(_BearerAuthHandler):
         import urllib.parse as up
 
         pd = {'audience': 'streams'}
-        r = requests.post(self.security_url, json=pd, verify=self._verify, auth=(self._username, self._password), headers={'Content-Type' : 'application/json',
-                                           'Accept' : 'application/json'})
+        r = requests.post(self.security_url, json=pd, verify=self._verify, auth=(self._username, self._password),
+                          headers={'Content-Type' : 'application/json', 'Accept' : 'application/json'},
+                          timeout=_TIMEOUTS['POST'])
         _handle_http_errors(r)
         self.token = r.json()['accessToken']
         self._auth_expiry_time=time.time() + 4 * 60
@@ -439,7 +609,8 @@ class _IAMAuthHandler(_BearerAuthHandler):
     def _refresh_auth(self):
         post_url = self._token_url + '?' + self._get_token_params(self._api_key)
         res = requests.post(post_url, headers = {'Accept' : 'application/json',
-                                                 'Content-Type' : 'application/x-www-form-urlencoded'})
+                                                 'Content-Type' : 'application/x-www-form-urlencoded'},
+                            timeout=_TIMEOUTS['POST'])
         _handle_http_errors(res)
         res = res.json()
 
@@ -462,7 +633,7 @@ class _IAMStreamsRestClient(_StreamsRestClient):
 
     # Re-use client across the same thread (Session is not thread safe).
     @staticmethod
-    def _create(credentials):
+    def _create(credentials, timeouts=_TIMEOUTS):
         clients = _IAMStreamsRestClient._CLIENTS
         if not hasattr(clients, '_clients'):
             clients._clients = {}
@@ -470,16 +641,16 @@ class _IAMStreamsRestClient(_StreamsRestClient):
         if service_id in clients._clients:
             return clients._clients[service_id]
 
-        client = _IAMStreamsRestClient(credentials)
+        client = _IAMStreamsRestClient(credentials, timeouts=timeouts)
         clients._clients[service_id] = client
         return client
         
-    def __init__(self, credentials):
+    def __init__(self, credentials, timeouts=_TIMEOUTS):
         """
         Args:
             credentials: The credentials of the Streaming Analytics service.
         """
-        super(_IAMStreamsRestClient, self).__init__(_IAMAuthHandler(credentials))
+        super(_IAMStreamsRestClient, self).__init__(_IAMAuthHandler(credentials), timeouts=timeouts)
 
 
 class _ViewDataFetcher(object):
@@ -621,6 +792,7 @@ class View(_ResourceElement):
                     tuple_fn = _get_view_string_tuple
         self._data_fetcher = None
         self._tuple_fn = tuple_fn
+        self._rest_timeout_logged_once = False
 
     def get_domain(self):
         """Get the Streams domain for the instance that owns this view.
@@ -629,7 +801,7 @@ class View(_ResourceElement):
             Domain: Streams domain for the instance owning this view.
         """
         if hasattr(self, 'domain'):
-            return Domain(self.rest_client.make_request(self.domain), self.rest_client)
+            return Domain._fetch(self.domain, self.rest_client)
 
     def get_instance(self):
         """Get the Streams instance that owns this view.
@@ -637,7 +809,7 @@ class View(_ResourceElement):
         Returns:
             Instance: Streams instance owning this view.
         """
-        return Instance(self.rest_client.make_request(self.instance), self.rest_client)
+        return Instance._fetch(self.instance, self.rest_client)
 
     def get_job(self):
         """Get the Streams job that owns this view.
@@ -645,7 +817,7 @@ class View(_ResourceElement):
         Returns:
             Job: Streams Job owning this view.
         """
-        return Job(self.rest_client.make_request(self.job), self.rest_client)
+        return Job._fetch(self.job, self.rest_client)
 
     def stop_data_fetch(self):
         """Stops the thread that fetches data from the Streams view server.
@@ -745,13 +917,15 @@ class View(_ResourceElement):
 
         .. versionadded:: 1.12
         """
+        # Verify we are in a IPython env.
+        get_ipython() # noqa : F821
         import ipywidgets as widgets
         vn = widgets.Text(value=self.description, description=self.name, disabled=True)
         active = widgets.Valid(value=True, description='Fetching', readout='Stopped')
         out = widgets.Output(layout={'border': '1px solid black'})
         hb = widgets.HBox([vn, active])
         vb = widgets.VBox([hb, out])
-        display(vb)
+        display(vb) # noqa : F821
         self._display_thread = threading.Thread(target=lambda: self._display(out, duration, period, active))
         self._display_thread.start()
         
@@ -783,9 +957,12 @@ class View(_ResourceElement):
                 if not tuples:
                     if not self._data_fetcher:
                         break
-                    out.append_stdout('No tuples')
+                    with out:
+                        display('No tuples') # noqa : F821
                 else:
-                    out.append_display_data(pd.DataFrame(tuples))
+                    df = pd.DataFrame(tuples)
+                    with out:
+                        display(df) # noqa : F821
                 out.clear_output(wait=True)
                 last = time.time()
         except Exception as e:
@@ -802,10 +979,17 @@ class View(_ResourceElement):
         Returns:
             list(ViewItem): List of ViewItem(s) associated with this view.
         """
-        view_items = [ViewItem(json_view_items, self.rest_client) for json_view_items
-                      in self.rest_client.make_request(self.viewItems)['viewItems']]
-        logger.debug("Retrieved " + str(len(view_items)) + " items from view " + self.name)
-        return view_items
+        try:
+            view_items = [ViewItem(json_view_items, self.rest_client) for json_view_items
+                          in self.rest_client.make_request(self.viewItems)['viewItems']]
+            logger.debug("Retrieved " + str(len(view_items)) + " items from view " + self.name)
+            return view_items
+        except Timeout as to:
+            # catches both ConnectTimeout and ReadTimeout error
+            if not self._rest_timeout_logged_once:
+                self._rest_timeout_logged_once = True
+                logger.error("Timeout retrieving items for view " + self.name + ". timeouts = " + str(self.rest_client.timeout_for('GET')))
+            return []
 
 
 class ViewItem(_ResourceElement):
@@ -864,7 +1048,7 @@ class Job(_ResourceElement):
         health (str): Health indicator for the job. Some possible values for this property include *healthy*,
             *partiallyHealthy*, *partiallyUnhealthy*, *unhealthy*, and *unknown*.
         applicationName (str): Name of the streams processing application that this job is running.
-        jobGroup (str): Identifies the job group to which this job belongs.
+        jobGroup (str): Streams 4.2/4.3 only. Identifies the job group to which this job belongs.
         startedBy (str): Identifies the user ID that started this job.
         status (str): Status of this job. Some possible values for this property include *canceling*, *running*,
             *canceled*, and *unknown*.
@@ -878,6 +1062,7 @@ class Job(_ResourceElement):
         >>> print (jobs[0].health)
         healthy
     """
+
     def retrieve_log_trace(self, filename=None, dir=None):
         """Retrieves the application log and trace files of the job
         and saves them as a compressed tar file.
@@ -919,7 +1104,7 @@ class Job(_ResourceElement):
             >>> sc = rest.StreamingAnalyticsConnection()
             >>> instances = sc.get_instances()
             >>> job = instances[0].get_jobs()[0]
-            >>> views = job.get_views(name = "*temperatureSensor*")
+            >>> views = job.get_views(name = ".*temperatureSensor*")
         """
         return self._get_elements(self.views, 'views', View, name=name)
 
@@ -930,7 +1115,7 @@ class Job(_ResourceElement):
             Domain: Streams domain that owns this job.
         """
         if hasattr(self, 'domain'):
-            return Domain(self.rest_client.make_request(self.domain), self.rest_client)
+            return Domain._fetch(self.domain, self.rest_client)
 
     def get_instance(self):
         """Get the Streams instance that owns this job.
@@ -938,7 +1123,7 @@ class Job(_ResourceElement):
         Returns:
             Instance: Streams instance that owns this job.
         """
-        return Instance(self.rest_client.make_request(self.instance), self.rest_client)
+        return Instance._fetch(self.instance, self.rest_client)
 
     def get_hosts(self):
         """Get the list of :py:class:`Host` elements associated with this job.
@@ -973,7 +1158,7 @@ class Job(_ResourceElement):
             >>> sc = rest.StreamingAnalyticsConnection()
             >>> instances = sc.get_instances()
             >>> job = instances[0].get_jobs()[0]
-            >>> operators = job.get_operators(name="*temperatureSensor*")
+            >>> operators = job.get_operators(name=".*temperatureSensor*")
 
         .. versionchanged:: 1.9 `name` parameter added.
         """
@@ -1014,8 +1199,41 @@ class Job(_ResourceElement):
         Returns:
             bool: True if the job was cancelled, otherwise False if an error occurred.
         """
+        self.rest_client._cache_job_cancel(self)
         return self.rest_client._sc._delegator._cancel_job(self, force)
 
+    def update_operators(self, job_config):
+        """ Adjust a job configuration while the job is running
+
+        Arguments:
+            job_config {JobConfig} -- a job configuration overlay
+
+        Returns:
+            [JSON] -- The result of applying the new jobConfig?
+        """
+        return self.rest_client._sc._delegator._update_operators(self, job_config)
+
+    def get_job_group(self):
+        """
+        Get the job group associated with this job.
+
+        .. versionadded:: 1.13.13
+        """
+        # 4.x returned just the name for jobGroup.
+        if self.jobGroup.startswith('https://'):
+            return JobGroup._fetch(self.jobGroup, self.rest_client)
+        return JobGroup({'name':self.jobGroup}, self.rest_client)
+
+class JobGroup(_ResourceElement):
+    """A job group definition.
+
+        Attributes:
+        name(str): Job group name.
+        resourceType(str): Identifies the REST resource type, which is *jobGroup*.
+
+        .. versionadded:: 1.13.13
+    """
+    pass
 
 class Operator(_ResourceElement):
     """An operator invocation within a job.
@@ -1065,7 +1283,7 @@ class Operator(_ResourceElement):
         .. versionadded:: 1.9
         """
         if hasattr(self, 'host') and self.host:
-            return Host(self.rest_client.make_request(self.host), self.rest_client)
+            return Host._fetch(self.host, self.rest_client)
 
     def get_pe(self):
         """Get the Streams processing element this operator is executing in.
@@ -1075,7 +1293,7 @@ class Operator(_ResourceElement):
 
         .. versionadded:: 1.9
         """
-        return PE(self.rest_client.make_request(self.pe), self.rest_client)
+        return PE._fetch(self.pe, self.rest_client)
 
     def get_output_ports(self):
         """Get list of output ports for this operator.
@@ -1096,6 +1314,15 @@ class Operator(_ResourceElement):
         .. versionadded:: 1.9
         """
         return self._get_elements(self.inputPorts, 'inputPorts', OperatorInputPort)
+
+    def get_job(self):
+        """Get the Streams job that owns this operator.
+
+        Returns:
+            Job: Streams Job owning this operator.
+
+        """
+        return Job._fetch(self.job, self.rest_client)
 
 
 class OperatorConnection(_ResourceElement):
@@ -1231,7 +1458,7 @@ class Metric(_ResourceElement):
         >>> print (metrics[0].resourceType)
         metric
     """
-    pass
+    _USE_CACHE = False
 
 
 class PE(_ResourceElement):
@@ -1280,7 +1507,18 @@ class PE(_ResourceElement):
         .. versionadded:: 1.9
         """
         if hasattr(self, 'host') and self.host:
-            return Host(self.rest_client.make_request(self.host), self.rest_client)
+            return Host._fetch(self.host, self.rest_client)
+
+    def get_resource(self):
+        """Get resource this processing element is currently executing in.
+
+        Returns:
+            Host: Resource this processing element is running on.
+
+        .. versionadded:: 1.13.13
+        """
+        if hasattr(self, 'resource') and self.resource:
+            return Resource._fetch(self.resource, self.rest_client)
 
     def retrieve_trace(self, filename=None, dir=None):
         """Retrieves the application trace files for this PE
@@ -1361,7 +1599,15 @@ class PE(_ResourceElement):
         .. versionadded:: 1.9
         """
         if hasattr(self, 'resourceAllocation'):
-            return ResourceAllocation(self.rest_client.make_request(self.resourceAllocation), self.rest_client)
+            return ResourceAllocation._fetch(self.resourceAllocation, self.rest_client)
+
+    def get_job(self):
+        """Get the Streams job that owns this PE.
+
+        Returns:
+            Job: Streams Job owning this PE.
+        """
+        return Job._fetch(self.job, self.rest_client)
 
 
 class PEConnection(_ResourceElement):
@@ -1411,7 +1657,7 @@ class ResourceAllocation(_ResourceElement):
 
         .. versionadded:: 1.9
         """
-        return Resource(self.rest_client.make_request(self.resource), self.rest_client)
+        return Resource._fetch(self.resource, self.rest_client)
 
     def get_pes(self):
         """Get the list of :py:class:`PE` running on this resource
@@ -1524,7 +1770,7 @@ class ExportedStream(_ResourceElement):
         Returns:
             OperatorOutputPort: Output port of this exported stream.
         """
-        return OperatorOutputPort(self.rest_client.make_request(self.operatorOutputPort), self.rest_client)
+        return OperatorOutputPort._fetch(self.operatorOutputPort, self.rest_client)
 
     def _as_published_topic(self):
         """This stream as a PublishedTopic if it is published otherwise None
@@ -1748,13 +1994,8 @@ class Instance(_ResourceElement):
         if service_name:
             # this is an integrated config
             auth=_ICPDExternalAuthHandler(endpoint, username, password, verify, service_name)
-            resource_url, _ = Instance._root_from_endpoint(auth._cfg['connection_info'].get('serviceRestEndpoint'))
-            service_name=auth._cfg['service_name']
-            sc = streamsx.rest.StreamsConnection(resource_url=resource_url, auth=auth)
-            if verify is not None:
-                sc.rest_client.session.verify = verify
-                
-            return sc.get_instance(service_name)
+            url = auth._cfg['connection_info'].get('serviceRestEndpoint')
+            return streamsx.rest._InstanceSc.get_instance(url, auth, verify)
 
         else:
             # this is a stand-alone config
@@ -1804,7 +2045,7 @@ class Instance(_ResourceElement):
             >>> from streamsx import rest
             >>> sc = rest.StreamingAnalyticsConnection()
             >>> instance = sc.get_instances()[0]
-            >>> operators = instance.get_operators(name="*temperatureSensor*")
+            >>> operators = instance.get_operators(name=".*temperatureSensor*")
 
         .. versionchanged:: 1.9 `name` parameter added.
         """
@@ -1849,7 +2090,7 @@ class Instance(_ResourceElement):
             >>> from streamsx import rest
             >>> sc = rest.StreamingAnalyticsConnection()
             >>> instance = sc.get_instances()[0]
-            >>> view = instance.get_views(name="*temperatureSensor*")
+            >>> view = instance.get_views(name=".*temperatureSensor*")
         """
         return self._get_elements(self.views, 'views', View, name=name)
 
@@ -1869,7 +2110,7 @@ class Instance(_ResourceElement):
             Domain: Streams domain owning this instance.
         """
         if hasattr(self, 'domain'):
-            return Domain(self.rest_client.make_request(self.domain), self.rest_client)
+            return Domain._fetch(self.domain, self.rest_client)
 
     def get_jobs(self, name=None):
         """Retrieves jobs running in this instance.
@@ -1886,9 +2127,26 @@ class Instance(_ResourceElement):
             >>> from streamsx import rest
             >>> sc = rest.StreamingAnalyticsConnection()
             >>> instance = sc.get_instances()[0]
-            >>> jobs = instance.get_jobs(name="*temperatureApplication*")
+            >>> jobs = instance.get_jobs(name=".*temperatureApplication*")
         """
         return self._get_elements(self.jobs, 'jobs', Job, None, name)
+
+    def get_job_groups(self, name=None):
+        """Retrieves job groups defined in this instance.
+
+        Args:
+            name (str, optional): Only return job groups containing property **name** that matches `name`. `name` can be a
+                regular expression. If `name` is not supplied, then all job groups are returned.
+
+        Returns:
+            list(JobGroup): A list of job groups matching the given `name`.
+
+        Only supported for Streams 5.0 and later.
+
+        .. versionadded:: 1.13.13
+        """
+        if hasattr(self, 'jobGroups'):
+            return self._get_elements(self.jobGroups, 'jobGroups', JobGroup, None, name)
 
     def get_job(self, id):
         """Retrieves a job matching the given `id`
@@ -2046,7 +2304,8 @@ class Instance(_ResourceElement):
 
         res = self.rest_client.session.post(self.applicationConfigurations,
             headers = {'Accept' : 'application/json'},
-            json=cv)
+            json=cv,
+            timeout=self.rest_client.timeout_for('POST'))
         _handle_http_errors(res)
         return ApplicationConfiguration(res.json(), self.rest_client)
 
@@ -2225,14 +2484,6 @@ class RestResource(_ResourceElement):
         return self.rest_client.make_request(self.resource)
 
 
-def get_view_obj(_view, rc):
-    for domain in rc.get_domains():
-        for instance in domain.get_instances():
-            for view in instance.get_views():
-                if view.name == _view.name:
-                    return view
-    return None
-
 class StreamingAnalyticsService(object):
     """Streaming Analytics service running on IBM Cloud.
     """
@@ -2349,7 +2600,8 @@ class _StreamingAnalyticsServiceV2Delegator(object):
                 ]
             res = self.rest_client.session.post(self._get_jobs_url(),
                 headers = {'Accept' : 'application/json'},
-                files=files)
+                files=files,
+                timeout=None)
             _handle_http_errors(res)
             return res.json()
 
@@ -2370,22 +2622,24 @@ class _StreamingAnalyticsServiceV2Delegator(object):
         # Cancel the job using the job id
         cancel_url = self._get_jobs_url() + '/' + str(job_id)
         headers = { 'Accept' : 'application/json'}
-        res = self.rest_client.session.delete(cancel_url, headers=headers)
+        res = self.rest_client.session.delete(cancel_url, headers=headers, timeout=self.rest_client.timeout_for('DELETE'))
         _handle_http_errors(res)
         return res.json()
 
     def start_instance(self):
         res = self.rest_client.session.patch(self._v2_rest_url, json={'state' : 'STARTED'},
-                               headers = {
-                                          'Content-Type' : 'application/json',
-                                          'Accept' : 'application/json'})
+                                             headers={
+                                                 'Content-Type' : 'application/json',
+                                                 'Accept' : 'application/json'},
+                                             timeout=None)
         _handle_http_errors(res)
         return res.json()
 
     def stop_instance(self):
         res = self.rest_client.session.patch(self._v2_rest_url, json={'state' : 'STOPPED'},
-                               headers = { 'Content-Type' : 'application/json',
-                                          'Accept' : 'application/json'})
+                                             headers = { 'Content-Type' : 'application/json',
+                                                         'Accept' : 'application/json'},
+                                             timeout=None)
         _handle_http_errors(res)
         return res.json()
 
@@ -2436,7 +2690,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
                 ('bundle_file', (sab_name, bundle_fp, 'application/octet-stream')),
                 ('job_options', ('job_options', json.dumps(job_options), 'application/json'))
                 ]
-            return self.rest_client.session.post(url=url, params=params, files=files).json()
+            return self.rest_client.session.post(url=url, params=params, files=files, timeout=None).json()
 
     def cancel_job(self, job_id=None, job_name=None):
         """Cancel a running job.
@@ -2455,7 +2709,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
             payload['job_id'] = job_id
 
         jobs_url = self._get_url('jobs_path')
-        res = self.rest_client.session.delete(jobs_url, params=payload)
+        res = self.rest_client.session.delete(jobs_url, params=payload, timeout=self.rest_client.timeout_for('DELETE'))
         _handle_http_errors(res)
         return res.json()
 
@@ -2466,7 +2720,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
             dict: JSON response for the instance start operation.
         """
         start_url = self._get_url('start_path')
-        res = self.rest_client.session.put(start_url, json={})
+        res = self.rest_client.session.put(start_url, json={}, timeout=None)
         _handle_http_errors(res)
         return res.json()
 
@@ -2477,7 +2731,7 @@ class _StreamingAnalyticsServiceV1Delegator(object):
             dict: JSON response for the instance stop operation.
         """
         stop_url = self._get_url('stop_path')
-        res = self.rest_client.session.put(stop_url, json={})
+        res = self.rest_client.session.put(stop_url, json={}, timeout=None)
         _handle_http_errors(res)
         return res.json()
 
@@ -2657,9 +2911,10 @@ class ApplicationConfiguration(_ResourceElement):
         """
         cv = ApplicationConfiguration._props(properties=properties, description=description)
         res = self.rest_client.session.patch(self.rest_self,
-            headers = {'Accept' : 'application/json',
-                       'Content-Type' : 'application/json'},
-            json=cv)
+                                             headers = {'Accept' : 'application/json',
+                                                        'Content-Type' : 'application/json'},
+                                             json=cv,
+                                             timeout=self.rest_client.timeout_for('PATCH'))
         _handle_http_errors(res)
         self.json_rep = res.json()
         return self
@@ -2667,7 +2922,7 @@ class ApplicationConfiguration(_ResourceElement):
     def delete(self):
         """Delete this application configuration.
         """
-        res = self.rest_client.session.delete(self.rest_self)
+        res = self.rest_client.session.delete(self.rest_self, timeout=self.rest_client.timeout_for('DELETE'))
         _handle_http_errors(res)
 
 
@@ -2687,7 +2942,8 @@ class _StreamsRestDelegator(object):
             res = self.rest_client.session.post(app_bundle_url,
                 headers = {'Accept' : 'application/json', 'Content-Type': 'application/x-jar'},
                 data=bundle_fp,
-                verify=self.rest_client.session.verify)
+                verify=self.rest_client.session.verify,
+                timeout=None)
             _handle_http_errors(res)
             if res.status_code != 200:
                 raise ValueError(str(res))
@@ -2698,22 +2954,22 @@ class _StreamsRestDelegator(object):
         job_options = job_config.as_overlays() if job_config else {}
         app_id = bundle._app_id()
         res = self.rest_client.session.post(bundle._instance.jobs,
-            headers = {'Accept' : 'application/json'}, json={'application': app_id, 'jobConfigurationOverlay':job_options, 'preview':False},
-            verify=self.rest_client.session.verify)
+            headers = {'Accept' : 'application/json'},
+            json={'application': app_id, 'jobConfigurationOverlay':job_options, 'preview':False},
+            verify=self.rest_client.session.verify,
+            timeout=None)
         _handle_http_errors(res)
         if res.status_code != 201:
             raise ValueError(str(res))
-        location = res.headers['Location']
-        job = Job({'self': location}, self.rest_client)
-        job.refresh()
-        return job.id
+        return res.json()['id']
 
     def _cancel_job(self, job, force):
         self.rest_client._block_ssl_warn()
         cancel_url = job.instance + '/jobs/' + job.id
         res = self.rest_client.session.delete(cancel_url,
                 headers = {'Accept' : 'application/json'},
-                verify=self.rest_client.session.verify)
+                verify=self.rest_client.session.verify,
+                timeout=self.rest_client.timeout_for('DELETE'))
 
         if res.status_code == 204:
             return True
@@ -2723,6 +2979,26 @@ class _StreamsRestDelegator(object):
         res.raise_for_status()
 
         return False
+
+    def _update_operators(self, job, job_config):
+        self.rest_client._block_ssl_warn()
+
+        job_options = job_config.as_overlays()
+
+        # Update the job operators using the job id
+        update_url = job.instance + '/jobs/' + job.id
+
+        # --- 1/13/20 'preview':False is ignored until 1Q20 fix ---
+        res = self.rest_client.session.patch(update_url,
+                headers = {'Accept' : 'application/json'},
+                json = {'jobConfigurationOverlay':job_options},
+                verify=self.rest_client.session.verify,
+                timeout=self.rest_client.timeout_for('PATCH'))
+        _handle_http_errors(res)
+        if res.status_code != 200:
+            raise ValueError(str(res))
+        return 0
+        # return res.json()['results']
 
 class Toolkit(_ResourceElement):
     """IBM Streams toolkit.
@@ -2755,7 +3031,8 @@ class Toolkit(_ResourceElement):
     def delete(self):
         res = self.rest_client.session.delete(self.self, 
                 headers = {'Accept' : 'application/json'},
-                verify=self.rest_client.session.verify)
+                verify=self.rest_client.session.verify,
+                timeout=self.rest_client.timeout_for('DELETE'))
 
         # 204 is success
         if res.status_code == 204:

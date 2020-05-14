@@ -2,10 +2,6 @@
 # Licensed Materials - Property of IBM
 # Copyright IBM Corp. 2015,2016
 
-from __future__ import unicode_literals
-from future.builtins import *
-from past.builtins import basestring
-
 import os
 import sys
 import uuid
@@ -19,14 +15,28 @@ import dill
 
 import types
 import base64
+import hashlib
 import re
 import streamsx.topology.dependency
 import streamsx.topology.functions
 import streamsx.topology.param
 import streamsx.topology.state
 import streamsx.spl.op
+import streamsx.spl.spl
 from streamsx.topology.schema import CommonSchema, StreamSchema, _normalize
 
+def _get_project_name():
+    # CPD >= 2.5
+    if 'PROJECT_NAME' in os.environ:
+        return os.environ['PROJECT_NAME']
+    # CPD < 2.5
+    if 'DSX_PROJECT_NAME' in os.environ:
+        return os.environ['DSX_PROJECT_NAME']
+    try:
+        from project_lib.project import Project
+        return Project.access().get_name()
+    except:
+        pass
 
 def _fix_namespace(ns):
     ns = str(ns)
@@ -41,6 +51,28 @@ def _fix_namespace(ns):
             sns.pop(i)
 
     return '.'.join(sns)
+
+_RT_ID_REMOVE = {ord('='):None,ord('+'):None,ord('/'):None}
+
+def _get_runtime_id(kind, name):
+    if len(name) <= 80 and streamsx.spl.spl._is_identifier(name):
+        return name
+
+    md = hashlib.md5()
+    md.update(name.encode('utf-8'))
+
+    d = md.digest()
+    # Xor fold to reduce length
+    f = bytes(f^b for (f,b) in zip(d[0:8], d[8:16]))
+
+    # Base 64 encode to make somewhat readable
+    # Use _ for +,/
+    # Strip padding
+    suffix = base64.b64encode(f).decode('ascii').translate(_RT_ID_REMOVE)
+
+    prefix = kind.split('::')[-1] if '::' in kind else kind
+
+    return prefix + '_' + suffix
 
 def _as_spl_expr(value):
     """ Return value converted to an SPL expression if
@@ -227,10 +259,10 @@ class SPLGraph(object):
     def _add_project_info(self, _graph):
         # Determine if it looks like we are in a project structure
         # and if so add an @spl__project() annotation
-        project_id = os.environ.get('DSX_PROJECT_ID')
+        project_id = os.environ.get('PROJECT_ID', os.environ.get('DSX_PROJECT_ID'))
         if project_id:
             annotation = {'type':'spl__project', 'properties':{'id':project_id}}
-            project_name = os.environ.get('DSX_PROJECT_NAME')
+            project_name = _get_project_name()
             if project_name:
                 annotation['properties']['name'] = project_name
             if not 'annotations' in _graph:
@@ -256,7 +288,7 @@ class SPLGraph(object):
          for location in fls:
              files = fls[location]
              for path in files:
-                 if isinstance(path, basestring):
+                 if isinstance(path, str):
                      # Simple file with a source to copy
                      f = {}
                      f['source'] = path
@@ -316,9 +348,13 @@ class _SPLInvocation(object):
         self._layout_hints = {}
         self._addOperatorFunction(self.function, stateful, nargs)
 
-    def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema= CommonSchema.Python,partitioned_keys=None, routing = None):
+        self.runtime_id = self._get_runtime_id(self.kind, self.name)
+
+    def addOutputPort(self, oWidth=None, name=None, inputPort=None, schema=None,partitioned_keys=None, routing = None):
+        if schema is None:
+            schema=CommonSchema.Python
         if name is None:
-            name = self.name + "_OUT"+str(len(self.outputPorts))
+            name = self.runtime_id + "_OUT"+str(len(self.outputPorts))
         oport = OPort(name, self, len(self.outputPorts), schema, oWidth, partitioned_keys, routing=routing)
         self.outputPorts.append(oport)
         if schema == CommonSchema.Python:
@@ -363,7 +399,8 @@ class _SPLInvocation(object):
 
     def generateSPLOperator(self):
         _op = dict(self._op_def)
-        _op["name"] = self.name
+        #_op["name"] = self.name
+        _op["name"] = self.runtime_id
         if self.category:
             _op["category"] = self.category
 
@@ -464,24 +501,29 @@ class _SPLInvocation(object):
         self.language = 'python'
 
         # Wrap a lambda as a callable class instance
-        recurse = None
+        inline_fn = False
         if isinstance(function, types.LambdaType) and function.__name__ == "<lambda>" :
+            inline_fn = True
             if nargs:
                 function = streamsx.topology.runtime._Callable1(function, no_context=True)
             else:
                 function = streamsx.topology.runtime._Callable0(function, no_context=True)
-            recurse = True
         elif function.__module__ == '__main__':
             # Function/Class defined in main, create a callable wrapping its
             # dill'ed form
+            inline_fn = True
             if nargs:
                 function = streamsx.topology.runtime._Callable1(function,
                     no_context = True if inspect.isroutine(function) else None)
             else:
                 function = streamsx.topology.runtime._Callable0(function,
                     no_context = True if inspect.isroutine(function) else None)
-            recurse = True
-         
+
+        if inline_fn and function._modules:
+            for mod in function._modules.values():
+                if mod in sys.modules:
+                   self.graph.add_dependency(sys.modules[mod])
+
         if inspect.isroutine(function):
             # callable is a function
             self.params["pyName"] = function.__name__
@@ -489,7 +531,7 @@ class _SPLInvocation(object):
             # callable is a callable class instance
             self.params["pyName"] = function.__class__.__name__
             # dill format is binary; base64 encode so it is json serializable 
-            self.params["pyCallable"] = base64.b64encode(dill.dumps(function, recurse=recurse if sys.version_info.major == 2 else None )).decode("ascii")
+            self.params["pyCallable"] = base64.b64encode(dill.dumps(function, recurse=None )).decode("ascii")
 
         if stateful is not None:
             self.params['pyStateful'] = bool(stateful)
@@ -564,6 +606,16 @@ class _SPLInvocation(object):
         for port in self.outputPorts:
             print(port.name)
 
+    def _get_runtime_id(self, kind, name):
+        if self.graph.topology.name_to_runtime_id:
+            runtime_id = self.graph.topology.name_to_runtime_id(name)
+            if runtime_id:
+                if not streamsx.spl.spl._is_identifier(runtime_id):
+                    raise ValueError('%s is not a valid SPL identifier for name %s' % (runtime_id, name))
+                return runtime_id
+        return _get_runtime_id(kind, name)
+       
+
 # Input ports don't have a name in SPL but the code generation
 # keys ports by their name so we create a unique internal identifier
 # for the name.
@@ -590,7 +642,7 @@ class IPort(object):
         _iport["name"] = self.name
         if self._alias:
             _iport['alias'] = self._alias
-        _iport["connections"] = [port.name for port in self.outputPorts]
+        _iport["connections"] = [port.runtime_id for port in self.outputPorts]
         _iport["type"] = self.schema.schema()
         if self.window_config is not None:
             _iport['window'] = self.window_config
@@ -608,6 +660,7 @@ class OPort(object):
         self.routing = routing
 
         self.inputPorts = []
+        self.runtime_id = self.operator._get_runtime_id(self.operator.kind, self.name)
 
     def connect(self, iport):
         if not iport in self.inputPorts:
@@ -619,7 +672,8 @@ class OPort(object):
     def getSPLOutputPort(self):
         _oport = {}
         _oport["type"] = self.schema.schema()
-        _oport["name"] = self.name
+        #_oport["name"] = self.name
+        _oport["name"] = self.runtime_id
         _oport["connections"] = [port.name for port in self.inputPorts]
         _oport["routing"] = self.routing
 
@@ -640,16 +694,19 @@ class Marker(_SPLInvocation):
         self.model = 'virtual'
         self.name = name
         self.params = {}
+        self.config = {}
         self.setParameters(params)
         self.graph = graph
 
         self.inputPorts = []
         self.outputPorts = []
-                   
 
+        self.runtime_id = self._get_runtime_id(self.kind, self.name)
+                   
     def generateSPLOperator(self):
         _op = {}
-        _op["name"] = self.name
+        #_op["name"] = self.name
+        _op["name"] = self.runtime_id
 
         _op["kind"] = self.kind
         _op["partitioned"] = False

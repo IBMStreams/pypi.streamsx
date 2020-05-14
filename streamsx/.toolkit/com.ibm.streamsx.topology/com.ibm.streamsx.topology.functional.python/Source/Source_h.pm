@@ -54,6 +54,17 @@ sub main::generate($$) {
    SPL::CodeGen::headerPrologue($model);
    print "\n";
    print "\n";
+   my $tkdir = $model->getContext()->getToolkitDirectory();
+   my $pydir = $tkdir."/opt/python";
+   
+   require $pydir."/codegen/splpy.pm";
+   
+   # Initialize splpy.pm
+   splpyInit($model);
+   
+   my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
+   print "\n";
+   print "\n";
     # Python operators generally may be included in a consistent region, and
     # may be the source operator in a consistent region, but may not be the 
     # source operator in a consistent-region configured with an operator-driven
@@ -99,6 +110,8 @@ sub main::generate($$) {
    print '  // Control for interaction with Python', "\n";
    print '  SplpyFuncOp *funcop_;', "\n";
    print "\n";
+   print '  PyObject *pyOutNames_0;', "\n";
+   print "\n";
    print '  // Number of output connections when passing by ref', "\n";
    print '  // -1 when cannot pass by ref', "\n";
    print '  int32_t occ_;', "\n";
@@ -106,6 +119,13 @@ sub main::generate($$) {
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '    SPL::Mutex mutex_;', "\n";
    print '#endif', "\n";
+   print "\n";
+   if ($pyoutstyle eq 'dict') {
+   print "\n";
+   print '    void fromPyTupleToSPLTuple(PyObject *pyDict, OPort0Type & otuple);', "\n";
+   print '    void fromPyDictToSPLTuple(PyObject *pyTuple, OPort0Type & otuple);', "\n";
+   }
+   print "\n";
    print '}; ', "\n";
    print "\n";
    SPL::CodeGen::headerEpilogue($model);

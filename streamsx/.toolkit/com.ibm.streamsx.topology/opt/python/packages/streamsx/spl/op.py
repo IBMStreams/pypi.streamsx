@@ -147,8 +147,6 @@ For example, invoking an SPL `Beacon` operator using an output function to set t
 
 """
 
-from future.builtins import *
-
 __all__ = ['Invoke', 'Source', 'Map', 'Sink', 'Expression', 'main_composite']
 
 import streamsx.spl.toolkit
@@ -198,11 +196,24 @@ class Invoke(streamsx._streams._placement._Placement, streamsx.topology.exop.Ext
                  action = kind[kind.rfind('::') + 2 :]
              else:
                  action = kind
-        name = topology.graph._requested_name(name, action)
-        super(Invoke,self).__init__(topology,kind,inputs,schemas,params,name)
+        _name = topology.graph._requested_name(name, action)
+        super(Invoke,self).__init__(topology,kind,inputs,schemas,params,_name)
         self._op()._ex_op = self
         self._op().model = 'spl'
         self._op().language = 'spl'
+        if name:
+            self._op()._layout(name=self._op().runtime_id, orig_name=name)
+
+    def __setattr__(self, name, value):
+        # control attribute setting.
+        # When an output attribute assignment is done,
+        # an attribute is added to the current instance, which must be reflected
+        # in the attribute map of the instance (__dict__). When it is not an
+        # output assignment, the MRO of the superclass is applied to set the attribute.
+        if self._is_output_assignment_expression(value):
+            self.__dict__[name] = value
+        else:
+            super().__setattr__(name, value)
 
     def attribute(self, stream, name):
         """Expression for an input attribute.
@@ -255,13 +266,16 @@ class Invoke(streamsx._streams._placement._Placement, streamsx.topology.exop.Ext
         e._stream = stream
         return e
 
+    def _is_output_assignment_expression(self, obj):
+        return True if isinstance(obj, Expression) and hasattr(obj, '_stream') else False
+
     def _generate(self, opjson):
 
         # For any attribute that is an expression
         # set it as an output clause assignment
         for attr in self.__dict__:
             e = self.__dict__[attr]
-            if isinstance(e, Expression) and hasattr(e, '_stream'):
+            if self._is_output_assignment_expression(e):
                 opi = e._stream.oport.index
                 port = opjson['outputs'][opi]
                 if 'assigns' in port:
@@ -428,7 +442,6 @@ class Expression(object):
         return Expression('splexpr', value)
 
     def spl_json(self):
-        """Private method. May be removed at any time."""
         _splj = {}
         _splj["type"] = self._type
         _splj["value"] = self._value
@@ -436,6 +449,29 @@ class Expression(object):
 
     def __str__(self):
         return str(self._value)
+
+def _main_composite(kind, toolkits=None, name=None):
+    """This private function is used by the scripts to support compilation of SPL Main composites w/o a namespace.
+    """ 
+    if '::' in kind:
+        ns, topo_name = kind.rsplit('::', 1)
+        ns += '._spl'
+    elif not name:
+        ns = '_spl'
+        topo_name = kind
+    else:
+        # wrapping a composite w/o namespace with a namespace qualified name ('_spl')
+        # would fail to compile with Streamsx Compiler
+        raise ValueError('Main composite requires a namespace qualified name: ' + str(kind))
+    if name:
+        topo_name = name
+    topo = streamsx.topology.topology.Topology(name=topo_name, namespace=ns)
+    if toolkits:
+        for tk_path in toolkits:
+            streamsx.spl.toolkit.add_toolkit(topo, tk_path)
+    if not name:
+        topo.graph._main_composite = kind
+    return topo, Invoke(topo, kind, name=name)
 
 def main_composite(kind, toolkits=None, name=None):
     """Wrap a main composite invocation as a `Topology`.
@@ -457,7 +493,7 @@ def main_composite(kind, toolkits=None, name=None):
     composite invocation is invoked within a generated main composite.
 
     Args:
-        kind(str): Kind of the main composite operator invocation.
+        kind(str): Kind of the main composite operator invocation. Must be a namespace qualified name.
         toolkits(list[str]): Optional list of toolkits the main composite depends on.
         name(str): Invocation name for the main composite.
 
@@ -470,16 +506,14 @@ def main_composite(kind, toolkits=None, name=None):
     .. versionadded: 1.11
     """
     if '::' in kind:
-        ns, topo_name = kind.rsplit('::', 1)
-        ns += '._spl'
+        pass
     else:
+        # A composite w/o namespace fails to compile by sc when the given main composite 
+        # is wrapped by another composite. This happens when:
+        #   a) A name is used
+        #   b) The returned topology is touched by adding operators (tester, another independent flow)
+        # 
+        # a) could be checked here, b) cannot be checked here - we had to mark the 
+        # topology somehow immutable, so that additions raise an Exception (TODO).
         raise ValueError('Main composite requires a namespace qualified name: ' + str(kind))
-    if name:
-        topo_name = name
-    topo = streamsx.topology.topology.Topology(name=topo_name, namespace=ns)
-    if toolkits:
-        for tk_path in toolkits:
-            streamsx.spl.toolkit.add_toolkit(topo, tk_path)
-    if not name:
-        topo.graph._main_composite = kind
-    return topo, Invoke(topo, kind, name=name)
+    return _main_composite(kind, toolkits, name)

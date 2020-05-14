@@ -9,7 +9,7 @@ setup(
   description = 'IBM Streams Python Support',
   long_description = open('DESC.txt').read(),
   author = 'IBM Streams @ github.com',
-  author_email = 'debrunne@us.ibm.com',
+  author_email = 'hegermar@de.ibm.com',
   license='Apache License - Version 2.0',
   url = 'https://github.com/IBMStreams/pypi.streamsx',
   download_url = 'https://github.com/IBMStreams/pypi.streamsx/tarball/' + version,
@@ -17,14 +17,12 @@ setup(
   classifiers = [
     'Development Status :: 5 - Production/Stable',
     'License :: OSI Approved :: Apache Software License',
-    'Programming Language :: Python :: 2',
-    'Programming Language :: Python :: 2.7',
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
   ],
-  install_requires=['requests', 'future', 'dill>=0.2.8.2,<0.3.1', 'enum34;python_version=="2.7"'],
+  install_requires=['requests', 'future', 'dill>=0.2.8.2,<0.3.1'],
   entry_points = {
         'console_scripts': [
             'streamsx-runner=streamsx.scripts.runner:main',

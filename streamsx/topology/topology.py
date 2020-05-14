@@ -1,6 +1,6 @@
 # coding=utf-8
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2015,2017
+# Copyright IBM Corp. 2015,2019
 
 """
 Streaming application definition.
@@ -65,6 +65,8 @@ across the resources available in the instance.
     `Topology` does not represent a running application, so an instance of `Stream` class does not contain
     the tuples, it is only a declaration of a stream.
 
+.. _stream-desc:
+
 ******
 Stream
 ******
@@ -74,13 +76,35 @@ Alternatively, a stream can be finite, such as a stream that is created from the
 When a streams processing application contains infinite streams, the application runs continuously without ending.
 
 A stream has a schema that defines the type of each tuple on the stream.
-The schema for a Python Topology is either:
+The schema for a stream is either:
 
-* :py:const:`~streamsx.topology.schema.CommonSchema.Python` - A tuple may be any Python object. This is the default.
+* :py:const:`~streamsx.topology.schema.CommonSchema.Python` - A tuple may be any Python object. This is the default when the schema is not explictly or implicitly set.
 * :py:const:`~streamsx.topology.schema.CommonSchema.String` - Each tuple is a Unicode string.
 * :py:const:`~streamsx.topology.schema.CommonSchema.Binary` - Each tuple is a blob.
 * :py:const:`~streamsx.topology.schema.CommonSchema.Json` - Each tuple is a Python dict that can be expressed as a JSON object.
-* Structured - A stream that has a structured schema of a ordered list of attributes, with each attribute having a fixed type (e.g. float64 or int32) and a name. The schema of a structured stream is defined using :py:const:`~streamsx.topology.schema.StreamSchema`.
+* Structured - A stream that has a structured schema of a ordered list of attributes, with each attribute having a fixed type (e.g. float64 or int32) and a name. The schema of a structured stream is defined using typed named tuple or :py:const:`~streamsx.topology.schema.StreamSchema`.
+
+A stream's schema is implictly dervied from type hints declared for the callable
+of the transform that produces it. For example `readings` defined as follows would have a structured schema matching ``SensorReading`` ::
+
+    class SensorReading(typing.NamedTuple):
+        sensor_id: str
+        ts: int
+        reading: float
+    
+    def reading_from_json(value:dict) -> SensorReading:
+        return SensorReading(value['id'], value['timestamp'], value['reading'])
+
+    topo = Topology()
+    json_readings = topo.source(HttpReadings()).as_json()
+    readings = json_readings.map(reading_from_json)
+
+Deriving schemas from type hints can be disabled by setting the topology's
+``type_checking`` attribute to false, for example this would change `readings`
+in the previous example to have generic Python object schema :py:const:`~streamsx.topology.schema.CommonSchema.Python` ::
+
+    topo = Topology()
+    topo.type_checking = False
 
 *****************
 Stream processing
@@ -112,6 +136,60 @@ processed by a :py:meth:`~Stream.filter` using a lambda function::
 
     # Filter the stream so it only contains words starting with py
     pywords = words.filter(lambda word : word.startswith('py'))
+
+When a callable has type hints they are used to:
+
+   * define the schema of the resulting transformation, see  :ref:`stream-desc`.
+   * type checking the correctness of the transformation at topology declaration time.
+
+For example if the callable defining the source had type hints that indicated
+it was an iterator of ``str`` objects then the schema of the resultant stream
+would be :py:const:`~streamsx.topology.schema.CommonSchema.String`. If this
+source stream then underwent a :py:meth:`Stream.map` transform with a callable
+that had a type hint for its argument, a check is made to ensure
+that the type of the argument is compatible with ``str``.
+
+Type hints are maintained through transforms regardless of resultant schema.
+For example a transform that has a return type hint of ``int`` defines
+the schema as :py:const:`~streamsx.topology.schema.CommonSchema.Python`,
+but the type hint is retained even though the schema is generic. Thus an
+error is raised at topology declaration time if a downstream transformation
+uses a callable with a type hint that is incompatible with being passed an ``int``.
+
+How type hints are used is specific to each transformation, such as
+:py:meth:`~Topology.source`, :py:meth:`~Stream.map`, :py:meth:`~Stream.filter` etc.
+
+Type checking can be disabled by setting the topology's ``type_checking`` attribute to false.
+
+When a callable is a lambda or defined inline (defined in the main Python script,
+a notebook or an interactive session) then a serialized copy of its definition becomes part of the
+topology. The supported types of captured globals for these callables is limited to
+avoid increasing the size of the application and serialization failures due non-serializable
+objects directly or indirectly referenced from captured globals. The supported types of captured globals
+are constants (``int``, ``str``, ``float``, ``bool``, ``bytes``, ``complex``), modules, module attributes (e.g. classes, functions and variables
+defined in a module), inline classes and functions. If a lambda or inline callable causes an exception due to unsupported global
+capture then moving it to its own module is a solution.
+
+Due to `Python bug 36697 <https://bugs.python.org/issue36697>`_ a lambda or inline callable can
+incorrect capture a global variable. For example an inline class using a attribute of ``self.model``
+will incorrectly capture the global ``model`` even if the global variable ``model`` is never used within the class.
+To workaround this bug use attribute or variable names that do not shadow global variables
+(e.g. ``self._model``).
+
+Due to `issue 2336 <https://github.com/IBMStreams/streamsx.topology/issues/2336>`_ an inline class using ``super()`` will cause an ``AttributeError`` at runtime. Workaround is to call the super class's method directly, for example replace this code::
+
+    class A(X):
+        def __init__(self):
+            super().__init__()
+
+with::
+
+    class A(X):
+        def __init__(self):
+            X.__init__(self)
+
+or move the class to a module.
+   
 
 Stateful operations
 ===================
@@ -196,16 +274,6 @@ Module contents
 ***************
 
 """
-from __future__ import unicode_literals
-from __future__ import print_function
-from __future__ import division
-from __future__ import absolute_import
-from future.builtins import *
-try:
-    from future import standard_library
-    standard_library.install_aliases()
-except (ImportError,NameError):
-    pass
 
 __all__ = [ 'Routing', 'SubscribeConnection', 'Topology', 'Stream', 'View', 'PendingStream', 'Window', 'Sink' ]
 
@@ -216,8 +284,10 @@ import copy
 import collections
 import random
 import streamsx._streams._placement as _placement
+import streamsx._streams._hints
 import streamsx.spl.op
 import streamsx.spl.types
+import streamsx.spl.spl
 import streamsx.topology.graph
 import streamsx.topology.schema
 import streamsx.topology.functions
@@ -349,7 +419,6 @@ class SubscribeConnection(Enum):
     """
 
     def spl_json(self):
-        """Internal method."""
         return streamsx.spl.op.Expression.expression('com.ibm.streamsx.topology.topic::' + self.name).spl_json()
 
 class Topology(object):
@@ -363,11 +432,13 @@ class Topology(object):
         namespace(str): Namespace of the topology. Defaults to a name dervied from the calling evironment if it can be determined, otherwise a random name.
 
     Attributes:
-        include_packages(set[str]): Python package names to be included in the built application. Any package in this list is copied into the bundle and made available at runtime to the Python callables used in the application. By default a ``Topology`` will automatically discover which packages and modules are required to be copied, this field may be used to add additional packages that were not automatically discovered. See also :py:meth:`~Topology.add_pip_package`.
+        include_packages(set[str]): Python package names to be included in the built application. Any package in this list is copied into the bundle and made available at runtime to the Python callables used in the application. By default a ``Topology`` will automatically discover which packages and modules are required to be copied, this field may be used to add additional packages that were not automatically discovered. See also :py:meth:`~Topology.add_pip_package`. Package names in `include_packages` take precedence over package names in `exclude_packages`.
 
         exclude_packages(set[str]): Python top-level package names to be excluded from the built application. Excluding a top-level packages excludes all sub-modules at any level in the package, e.g. `sound` excludes `sound.effects.echo`. Only the top-level package can be defined, e.g. `sound` rather than `sound.filters`. Behavior when adding a module within a package is undefined. When compiling the application using Anaconda this set is pre-loaded with Python packages from the Anaconda pre-loaded set.
 
-    Package names in `include_packages` take precedence over package names in `exclude_packages`.
+        type_checking(bool): Set to false to disable type checking, defaults to ``True``.
+
+        name_to_runtime_id: Optional callable that returns a runtime identifier for a name. Used to override the default mapping of a name into a runtime identifer. It will be called with `name` and returns a valid SPL identifier or ``None``. If ``None`` is returned then the default mapping for `name` is used. Defaults to ``None`` indicating the default mapping is used. See :py:meth:`Stream.runtime_id <Stream.runtime_id>`.
 
     All declared streams in a `Topology` are available through their name
     using ``topology[name]``. The stream's name is defined by :py:meth:`Stream.name` and will differ from the name parameter passed when creating the stream if the application uses duplicate names.
@@ -394,13 +465,13 @@ class Topology(object):
                 elif si[0] is not None:
                     namespace = os.path.splitext(os.path.basename(si[0]))[0]
                     if namespace.startswith('<ipython-input'):
-                        if 'DSX_PROJECT_NAME' in os.environ:
-                            namespace = os.environ['DSX_PROJECT_NAME']
+                        import streamsx.topology.graph
+                        namespace = streamsx.topology.graph._get_project_name()
+                        if not namespace:
+                            namespace = 'notebook'
         
         if sys.version_info.major == 3:
           self.opnamespace = "com.ibm.streamsx.topology.functional.python"
-        elif sys.version_info.major == 2 and sys.version_info.minor == 7:
-          self.opnamespace = "com.ibm.streamsx.topology.functional.python2"
         else:
           raise ValueError("Python version not supported.")
         self._streams = dict()
@@ -408,11 +479,11 @@ class Topology(object):
         self.exclude_packages = set() 
         self._pip_packages = list() 
         self._files = dict()
-        if "Anaconda" in sys.version or 'DSX_PROJECT_ID' in os.environ:
+        if "Anaconda" in sys.version or 'PROJECT_ID' in os.environ or 'DSX_PROJECT_ID' in os.environ:
             import streamsx.topology.condapkgs
             self.exclude_packages.update(streamsx.topology.condapkgs._CONDA_PACKAGES)
         import streamsx.topology._deppkgs
-        if 'DSX_PROJECT_ID' in os.environ:
+        if 'PROJECT_ID' in os.environ or 'DSX_PROJECT_ID' in os.environ:
             self.exclude_packages.update(streamsx.topology._deppkgs._ICP4D_NB_PACKAGES)
         self.exclude_packages.update(streamsx.topology._deppkgs._DEP_PACKAGES)
         
@@ -421,6 +492,8 @@ class Topology(object):
         self._checkpoint_period = None
         self._consistent_region_config = None
         self._has_jcp = False
+        self.type_checking = True
+        self.name_to_runtime_id = None
 
     @property
     def name(self):
@@ -443,6 +516,23 @@ class Topology(object):
 
     def __getitem__(self, name):
         return self._streams[name]
+
+    @property
+    def streams(self):
+        """
+        Dict of all streams in the topology.
+
+        Key is the name of the stream, value is the corresponding :py:obj:`Stream` instance.
+
+        The returned value is a shallow copy of current streams
+        in this topology. This allows callers to iterate over the copy
+        and perform operators that would add streams.
+
+        .. note:: Includes all streams created by composites and any internal streams created by topology.
+ 
+        .. versionadded:: 1.14
+        """
+        return self._streams.copy()
 
     def source(self, func, name=None):
         """
@@ -488,6 +578,22 @@ class Topology(object):
 
         Returns:
             Stream: A stream whose tuples are the result of the iterable obtained from `func`.
+
+        .. rubric:: Type hints
+
+        Type hints on `func` define the schema of the returned stream,
+        defaulting to :py:const:`~streamsx.topology.schema.CommonSchema.Python`
+        if no type hints are present.
+
+        For example ``s_sensor`` has a type hint that
+        defines it as an iterable of ``SensorReading`` instances (typed named tuples).
+        Thus `readings` has a structured schema matching ``SensorReading`` ::
+
+            def s_sensor() -> typing.Iterable[SensorReading] :
+                ...
+
+            topo = Topology()
+            readings = topo.source(s_sensor)
 
         .. rubric:: Simple examples
 
@@ -575,24 +681,30 @@ class Topology(object):
             Source functions that use generators are not supported
             when checkpointing or within a consistent region. This
             is because generators cannot be pickled (even when using `dill`).
+
+        .. versionchanged:: 1.14 
+            Type hints are used to define the returned stream schema.
         """
-        _name = name
-        if inspect.isroutine(func):
-            pass
-        elif callable(func):
+        sl = _SourceLocation(_source_info(), "source")
+        import streamsx.topology.composite
+        if isinstance(func, streamsx.topology.composite.Source):
+            return func._add(self, name)
+
+        _name = self.graph._requested_name(name, action='source', func=func)
+        hints = streamsx._streams._hints.schema_iterable(func, self)
+
+        if inspect.isroutine(func) or callable(func):
             pass
         else:
-            if _name is None:
-                _name = type(func).__name__
             func = streamsx.topology.runtime._IterableInstance(func)
 
-        sl = _SourceLocation(_source_info(), "source")
-        _name = self.graph._requested_name(_name, action='source', func=func)
+        schema = hints.schema if hints else None
+
         # source is always stateful
         op = self.graph.addOperator(self.opnamespace+"::Source", func, name=_name, sl=sl, nargs=0)
-        op._layout(kind='Source', name=_name, orig_name=name)
-        oport = op.addOutputPort(name=_name)
-        return Stream(self, oport)._make_placeable()
+        op._layout(kind='Source', name=op.runtime_id, orig_name=name)
+        oport = op.addOutputPort(schema=schema, name=_name)
+        return Stream(self, oport)._make_placeable()._add_hints(hints)
 
     def subscribe(self, topic, schema=streamsx.topology.schema.CommonSchema.Python, name=None, connect=None, buffer_capacity=None, buffer_full_policy=None):
         """
@@ -706,7 +818,7 @@ class Topology(object):
              self._files[location].append(path)
         return location + '/' + os.path.basename(path)
 
-    def add_pip_package(self, requirement):
+    def add_pip_package(self, requirement, name=None):
         """
         Add a Python package dependency for this topology.
 
@@ -742,9 +854,16 @@ class Topology(object):
             # and astral at version 0.8.1
             topo.add_pip_package('pint')
             topo.add_pip_package('astral==0.8.1')
+
+        Example for packages not provided on pypi.org::
+
+            topo = Topology()
+            # Add dependency on package using whl file
+            topo.add_pip_package(requirement='https://github.com/myrepo/raw/mydir/mypkg-1.0-py3-none-any.whl', name='mypkg')
         
         Args:
             requirement(str): Package requirements specifier.
+            name(str): Name added to :py:attr:`~exclude_packages`. Set this argument when adding URLs only.
 
         .. warning::
             Only supported when using the build service with
@@ -762,8 +881,11 @@ class Topology(object):
         .. versionadded:: 1.9
         """
         self._pip_packages.append(str(requirement))
-        pr = pkg_resources.Requirement.parse(requirement) 
-        self.exclude_packages.add(pr.project_name)
+        if name is None:
+            pr = pkg_resources.Requirement.parse(requirement)
+            self.exclude_packages.add(pr.project_name)
+        else:
+            self.exclude_packages.add(name)
 
     def create_submission_parameter(self, name, default=None, type_=None):
         """ Create a submission parameter.
@@ -796,8 +918,8 @@ class Topology(object):
             supported within a lambda expression or a callable
             that is not a function.
 
-        The default type of a submission parameter's value is a `str`
-        (`unicode` on Python 2.7). When a `default` is specified
+        The default type of a submission parameter's value is a `str`.
+        When a `default` is specified
         the type of the value matches the type of the default.
 
         If `default` is not set, then the type can be set with `type_`.
@@ -907,19 +1029,30 @@ class Stream(_placement._Placement, object):
     The Stream class is the primary abstraction within a streaming application. It represents a potentially infinite 
     series of tuples which can be operated upon to produce another stream, as in the case of :py:meth:`map`, or
     terminate a stream, as in the case of :py:meth:`for_each`.
+
+    .. versionchanged::1.14 
+        Type hints are used to define stream schemas and verify transformations
+        at declaration time.
     """
-    def __init__(self, topology, oport):
+    def __init__(self, topology, oport, other=None):
         self.topology = topology
         self.oport = oport
         self._placeable = False
         self._alias = None
+        self._hints = None
         topology._streams[self.oport.name] = self
         self._json_stream = None
+        if other:
+            self._add_hints(other._hints)
 
     def _op(self):
         if not self._placeable:
             raise TypeError()
         return self.oport.operator
+
+    def _add_hints(self, hints):
+        self._hints = hints
+        return self
 
     @property
     def name(self):
@@ -938,9 +1071,89 @@ class Stream(_placement._Placement, object):
             str: Name of the stream.
 
         .. seealso:: :py:meth:`aliased_as`
+
+        .. warning::
+            If the name is not a valid SPL identifier or longer than
+            80 characters then the name will be
+            converted to a valid SPL identifier at compile and runtime.
+            This identifier will be the name used in the REST api and log/trace.
+
+            Visualizations of the runtime graph uses `name` rather
+            than the converted identifier.
+
+            A valid SPL identifier consists only of 
+            characters ``A-Z``, ``a-z``, ``0-9``, ``_`` and
+            must not start with a number or be an SPL keyword.
+
+            See :py:meth:`runtime_id <runtime_id>`.
         """
         return self._alias if self._alias else self.oport.name
 
+    @property
+    def runtime_id(self):
+        """
+        Return runtime identifier.
+
+        If :py:meth:`name <name>` is not a valid SPL identifier then the
+        runtime identifier will be valid SPL identifier that represents `name`.
+        Otherwise `name` is returned.
+
+        The runtime identifier is how the underlying SPL operator
+        or output port is named in the REST api and trace/log files.
+
+        If a topology unique name is supplied when creating a stream then runtime
+        identifier is fixed regardless of other changes in the topology.
+
+        The algorithm to determine the runtime name (for clients that
+        cannot call this method, for example, remote REST clients gathering
+        metrics) is as follows.
+
+        If the length of :py:meth:`name <name>` is less than or equal
+        to 80 and ``name`` is an SPL identifier then ``name`` is used.
+        An SPL identifier consists only of the characters ``A-Z``, ``a-z``
+        ``0-9`` and ``_``, must not start with ``0-9`` and must not be
+        an SPL keyword.
+
+        Otherwise the identifier has the form ``prefix_suffix``.
+
+        ``prefix`` is the kind of the SPL operator stripped of
+        its namespace and ``::``.  For all functional methods
+        the operator kind is the method name with the first
+        character upper-cased.
+
+        For example, ``Filter`` for :py:meth:`filter`, ``Beacon`` for
+        ``spl::utility::Beacon``.
+
+        ``suffix`` is a hashed version of name, an MD5 digest
+        ``d`` is calculated from the UTf-8 encoding of ``name``.
+        ``d`` is shortened by having its first eight bytes xor folded
+        with its last eight bytes. ``d`` is then base64 encoded
+        to produce a string. Padding ``=`` and ``+`` and ``/`` characters
+        are removed from the string.
+
+        For example, ``s.filter(lambda x : True, name='你好')``
+        results in a runtime identifier of ``Filter_oGwCfhWRg4``.
+
+        The default mapping can be overridden by setting :py:attr:`Topology.name_to_runtime_id` to a callable that returns a valid identifier for its single argument. The returned identifier should be unique with the topology. For example usinig a pre-populated `dict` as the mapper::
+
+            topo = Topology()
+            names = {'你好', 'Buses', '培养':'Trains'}
+            topo.name_to_runtime_id = names.get
+
+            buses = toopo.source(..., name='你好')
+            trains = topo.source(..., name='培养'}
+
+            // buses.runtime_id will be Buses
+            // trains.runtime_id will be Trains
+
+
+        Returns:
+            str: Runtime identifier of the stream.
+
+        .. versionadded:: 1.14
+        """
+        return self.oport.runtime_id
+     
     def aliased_as(self, name):
         """
         Create an alias of this stream.
@@ -977,11 +1190,13 @@ class Stream(_placement._Placement, object):
         """
         Sends information as a stream to an external system.
 
-        For each tuple `t` on the stream ``func(t)`` is called.
-        
-        Args:
-            func: A callable that takes a single parameter for the tuple and returns None.
-            name(str): Name of the stream, defaults to a generated name.
+        The transformation defined by `func` is a callable
+        or a composite transformation.
+
+        .. rubric:: Callable transformation
+
+        If `func` is callable then for each tuple `t` on this
+        stream ``func(t)`` is called.
 
         If invoking ``func`` for a tuple on the stream raises an exception
         then its processing element will terminate. By default the processing
@@ -992,43 +1207,57 @@ class Stream(_placement._Placement, object):
         exception is suppressed no further processing occurs for the
         input tuple that caused the exception.
 
+        .. rubric:: Composite transformation
+
+        A composite transformation is an instance of :py:class:`~streamsx.topology.composite.ForEach`. Composites allow the application developer to use
+        the standard functional style of the topology api while allowing
+        allowing expansion of a `for_each` transform to multiple basic
+        transformations.
+        
+        Args:
+            func: A callable that takes a single parameter for the tuple and returns None.
+            name(str): Name of the stream, defaults to a generated name.
+
         Returns:
             streamsx.topology.topology.Sink: Stream termination.
 
+        .. rubric:: Type hints
+
+        The argument type hint on `func` is used (if present) to verify
+        at topology declaration time that it is compatible with the
+        type of tuples on this stream.
+
         .. versionchanged:: 1.7
             Now returns a :py:class:`Sink` instance.
+        .. versionchanged:: 1.14 
+            Support for type hints and composite transformations.
         """
+        import streamsx.topology.composite
+        if isinstance(func, streamsx.topology.composite.ForEach):
+            return func._add(self, name)
+
+        streamsx._streams._hints.check_for_each(func, self)
         sl = _SourceLocation(_source_info(), 'for_each')
         _name = self.topology.graph._requested_name(name, action='for_each', func=func)
         stateful = _determine_statefulness(func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::ForEach", func, name=_name, sl=sl, stateful=stateful)
         op.addInputPort(outputPort=self.oport)
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
-        op._layout(kind='ForEach', name=_name, orig_name=name)
+        op._layout(kind='ForEach', name=op.runtime_id, orig_name=name)
         return Sink(op)
-
-    def sink(self, func, name=None):
-        """
-        Equivalent to calling :py:meth:`for_each`.
-        
-        .. deprecated:: 1.7
-            Replaced by :py:meth:`for_each`.
-        """
-        warnings.warn("Use Stream.for_each()", DeprecationWarning, stacklevel=2)
-        return self.for_each(func, name)
 
     def filter(self, func, name=None):
         """
         Filters tuples from this stream using the supplied callable `func`.
 
-        For each tuple on the stream ``func(tuple)`` is called, if the return evaluates to ``True`` the
+        For each stream tuple `t` on the stream ``func(t)`` is called, if the return evaluates to ``True`` the
         tuple will be present on the returned stream, otherwise the tuple is filtered out.
         
         Args:
-            func: Filter callable that takes a single parameter for the tuple.
+            func: Filter callable that takes a single parameter for the stream tuple.
             name(str): Name of the stream, defaults to a generated name.
 
-        If invoking ``func`` for a tuple on the stream raises an exception
+        If invoking ``func`` for a stream tuple raises an exception
         then its processing element will terminate. By default the processing
         element will automatically restart though tuples may be lost.
 
@@ -1038,15 +1267,22 @@ class Stream(_placement._Placement, object):
         stream corresponding to the input tuple that caused the exception.
 
         Returns:
-            Stream: A Stream containing tuples that have not been filtered out.
+            Stream: A Stream containing tuples that have not been filtered out. The schema of the returned stream is the same as this stream's schema.
+
+        .. rubric:: Type hints
+
+        The argument type hint on `func` is used (if present) to verify
+        at topology declaration time that it is compatible with the
+        type of tuples on this stream.
         """
+        streamsx._streams._hints.check_filter(func, self)
         sl = _SourceLocation(_source_info(), 'filter')
         _name = self.topology.graph._requested_name(name, action="filter", func=func)
         stateful = _determine_statefulness(func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Filter", func, name=_name, sl=sl, stateful=stateful)
         op.addInputPort(outputPort=self.oport)
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
-        op._layout(kind='Filter', name=_name, orig_name=name)
+        op._layout(kind='Filter', name=op.runtime_id, orig_name=name)
         oport = op.addOutputPort(schema=self.oport.schema, name=_name)
         return Stream(self.topology, oport)._make_placeable()
 
@@ -1083,7 +1319,15 @@ class Stream(_placement._Placement, object):
         stream corresponding to the input tuple that caused the exception.
 
         Returns:
-            namedtuple: Named tuple of streams this stream is split across.
+            namedtuple: Named tuple of streams this stream is split across. All returned streams have the same schema as this stream.
+
+        .. rubric:: Type hints
+
+        The argument type hint on `func` is used (if present) to verify
+        at topology declaration time that it is compatible with the
+        type of tuples on this stream.
+
+        .. rubric:: Examples
 
         Example of splitting a stream based upon message severity, dropping
         any messages with unknown severity, and then performing different
@@ -1108,13 +1352,14 @@ class Stream(_placement._Placement, object):
 
         .. versionadded:: 1.13
         """
+        streamsx._streams._hints.check_split(func, self)
         sl = _SourceLocation(_source_info(), 'split')
         _name = self.topology.graph._requested_name(name, action="split", func=func)
         stateful = _determine_statefulness(func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::Split", func, name=_name, sl=sl, stateful=stateful)
         op.addInputPort(outputPort=self.oport)
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
-        op._layout(kind='Split', name=_name, orig_name=name)
+        op._layout(kind='Split', name=op.runtime_id, orig_name=name)
         streams = []
         nt_names = []
         op_name = name if name else _name
@@ -1125,7 +1370,7 @@ class Stream(_placement._Placement, object):
             oport = op.addOutputPort(schema=self.oport.schema, name=sn)
             streams.append(Stream(self.topology, oport)._make_placeable())
             nt_names.append(lsn)
-            op._layout(name=sn, orig_name=lsn)
+            op._layout(name=oport.runtime_id, orig_name=lsn)
         nt = collections.namedtuple(op_name, nt_names, rename=True)
         return nt._make(streams)
 
@@ -1137,7 +1382,7 @@ class Stream(_placement._Placement, object):
         op.addInputPort(outputPort=self.oport)
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         oport = op.addOutputPort(schema=schema, name=_name)
-        op._layout(name=_name, orig_name=name)
+        op._layout(name=op.runtime_id, orig_name=name)
         return Stream(self.topology, oport)._make_placeable()
 
     def view(self, buffer_time = 10.0, sample_size = 10000, name=None, description=None, start=False):
@@ -1188,7 +1433,7 @@ class Stream(_placement._Placement, object):
         else:
             view_stream = self
 
-        port = view_stream.oport.name
+        port = view_stream.oport.runtime_id
         view_config = {
                 'name': name,
                 'port': port,
@@ -1206,6 +1451,11 @@ class Stream(_placement._Placement, object):
         """
         Maps each tuple from this stream into 0 or 1 stream tuples.
 
+        The transformation defined by `func` is a callable
+        or a composite transformation.
+
+        .. rubric:: Callable transformation
+
         For each tuple on this stream ``result = func(tuple)`` is called.
         If `result` is not `None` then the result will be submitted
         as a tuple on the returned stream. If `result` is `None` then
@@ -1217,10 +1467,17 @@ class Stream(_placement._Placement, object):
         modifies each ``result`` before submission.
 
         * ``object`` or :py:const:`~streamsx.topology.schema.CommonSchema.Python` - The default:  `result` is submitted.
-        * ``str`` type (``unicode`` 2.7) or :py:const:`~streamsx.topology.schema.CommonSchema.String` - A stream of strings: ``str(result)`` is submitted.
+        * ``str`` type or :py:const:`~streamsx.topology.schema.CommonSchema.String` - A stream of strings: ``str(result)`` is submitted.
         * ``json`` or :py:const:`~streamsx.topology.schema.CommonSchema.Json` - A stream of JSON objects: ``result`` must be convertable to a JSON object using `json` package.
         * :py:const:`~streamsx.topology.schema.StreamSchema` - A structured stream. `result` must be a `dict` or (Python) `tuple`. When a `dict` is returned the outgoing stream tuple attributes are set by name, when a `tuple` is returned stream tuple attributes are set by position.
         * string value - Equivalent to passing ``StreamSchema(schema)``
+
+        .. rubric:: Composite transformation
+
+        A composite transformation is an instance of :py:class:`~streamsx.topology.composite.Map`. Composites allow the application developer to use
+        the standard functional style of the topology api while allowing
+        allowing expansion of a `map` transform to multiple basic
+        transformations.
 
         Args:
             func: A callable that takes a single parameter for the tuple.
@@ -1241,13 +1498,47 @@ class Stream(_placement._Placement, object):
         Returns:
             Stream: A stream containing tuples mapped by `func`.
 
+        .. rubric:: Type hints
+
+        If `schema` is not set then the return type hint on `func` define the
+        schema of the returned stream, defaulting to
+        :py:const:`~streamsx.topology.schema.CommonSchema.Python` if no
+        type hints are present.
+
+        For example `reading_from_json` has a type hint that
+        defines it as returning ``SensorReading`` instances (typed named tuples).
+        Thus `readings` has a structured schema matching ``SensorReading`` ::
+
+            def reading_from_json(value:dict) -> SensorReading:
+                return SensorReading(value['id'], value['timestamp'], value['reading'])
+
+            topo = Topology()
+            json_readings = topo.source(HttpReadings()).as_json()
+            readings = json_readings.map(reading_from_json)
+
+        The argument type hint on `func` is used (if present) to verify
+        at topology declaration time that it is compatible with the
+        type of tuples on this stream.
+
         .. versionadded:: 1.7 `schema` argument added to allow conversion to
             a structured stream.
         .. versionadded:: 1.8 Support for submitting `dict` objects as stream tuples to a structured stream (in addition to existing support for `tuple` objects).
         .. versionchanged:: 1.11 `func` is optional.
         """
+        import streamsx.topology.composite
+        if isinstance(func, streamsx.topology.composite.Map):
+            return func._add(self, schema, name)
+
+        # Schema mapping only, if no change then return original
+        if func is None and name is None and (schema is not None and
+            streamsx.topology.schema._normalize(schema) == self.oport.schema):
+            return self
+
+        hints = None
+        if func is not None:
+            hints = streamsx._streams._hints.check_map(func, self)
         if schema is None:
-            schema = streamsx.topology.schema.CommonSchema.Python
+            schema = hints.schema if hints else streamsx.topology.schema.CommonSchema.Python
         if func is None:
             func = streamsx.topology.runtime._identity
             if name is None:
@@ -1255,18 +1546,8 @@ class Stream(_placement._Placement, object):
      
         ms = self._map(func, schema=schema, name=name)._layout('Map')
         ms.oport.operator.sl = _SourceLocation(_source_info(), 'map')
-        return ms
+        return ms._add_hints(hints)
 
-    def transform(self, func, name=None):
-        """
-        Equivalent to calling :py:meth:`map(func,name) <map>`.
-
-        .. deprecated:: 1.7
-            Replaced by :py:meth:`map`.
-        """
-        warnings.warn("Use Stream.map()", DeprecationWarning, stacklevel=2)
-        return self.map(func, name)
-             
     def flat_map(self, func=None, name=None):
         """
         Maps and flatterns each tuple from this stream into 0 or more tuples.
@@ -1304,30 +1585,24 @@ class Stream(_placement._Placement, object):
 
         .. versionchanged:: 1.11 `func` is optional.
         """     
+        hints = None
         if func is None:
             func = streamsx.topology.runtime._identity
             if name is None:
                name = 'flatten'
+        else:
+            hints = streamsx._streams._hints.check_flat_map(func, self)
      
         sl = _SourceLocation(_source_info(), 'flat_map')
         _name = self.topology.graph._requested_name(name, action='flat_map', func=func)
         stateful = _determine_statefulness(func)
         op = self.topology.graph.addOperator(self.topology.opnamespace+"::FlatMap", func, name=_name, sl=sl, stateful=stateful)
         op.addInputPort(outputPort=self.oport)
+        schema = hints.schema if hints else streamsx.topology.schema.CommonSchema.Python
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
-        oport = op.addOutputPort(name=_name)
-        return Stream(self.topology, oport)._make_placeable()._layout('FlatMap', name=_name, orig_name=name)
+        oport = op.addOutputPort(name=_name, schema=schema)
+        return Stream(self.topology, oport)._make_placeable()._layout('FlatMap', name=op.runtime_id, orig_name=name)._add_hints(hints)
     
-    def multi_transform(self, func, name=None):
-        """
-        Equivalent to calling :py:meth:`flat_map`.
-
-        .. deprecated:: 1.7
-            Replaced by :py:meth:`flat_map`.
-        """
-        warnings.warn("Use Stream.flat_map()", DeprecationWarning, stacklevel=2)
-        return self.flat_map(func, name)
-
     def isolate(self):
         """
         Guarantees that the upstream operation will run in a separate processing element from the downstream operation
@@ -1339,7 +1614,7 @@ class Stream(_placement._Placement, object):
         # does the addOperator above need the packages
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport, other=self)
 
     def low_latency(self):
         """
@@ -1354,7 +1629,7 @@ class Stream(_placement._Placement, object):
         op = self.topology.graph.addOperator("$LowLatency$")
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport, other=self)
 
     def end_low_latency(self):
         """
@@ -1367,7 +1642,7 @@ class Stream(_placement._Placement, object):
         op = self.topology.graph.addOperator("$EndLowLatency$")
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport, other=self)
     
     def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None, name=None):
         """
@@ -1474,7 +1749,7 @@ class Stream(_placement._Placement, object):
                 oport = op2.addOutputPort(width, schema=self.oport.schema, routing="ROUND_ROBIN", name=_name)
 
                 
-            return Stream(self.topology, oport)
+            return Stream(self.topology, oport, other=self)
         elif routing == Routing.HASH_PARTITIONED:
 
             if (func is None):
@@ -1510,7 +1785,7 @@ class Stream(_placement._Placement, object):
                 hrop.addInputPort(outputPort=parallel_op_port)
                 parallel_op_port = hrop.addOutputPort(schema=self.oport.schema)
 
-            return Stream(self.topology, parallel_op_port)
+            return Stream(self.topology, parallel_op_port, other=self)
         else :
             raise TypeError("Invalid routing type supplied to the parallel operator")    
 
@@ -1532,7 +1807,7 @@ class Stream(_placement._Placement, object):
         op = self.topology.graph.addOperator("$EndParallel$")
         op.addInputPort(outputPort=outport)
         oport = op.addOutputPort(schema=self.oport.schema)
-        endP = Stream(self.topology, oport)
+        endP = Stream(self.topology, oport, other=self)
         return endP
 
     def set_parallel(self, width, name=None):
@@ -1871,7 +2146,7 @@ class Stream(_placement._Placement, object):
         op = self.topology.graph.addOperator("$Autonomous$")
         op.addInputPort(outputPort=self.oport)
         oport = op.addOutputPort(schema=self.oport.schema)
-        return Stream(self.topology, oport)
+        return Stream(self.topology, oport, other=self)
 
     def as_string(self, name=None):
         """
@@ -1896,7 +2171,7 @@ class Stream(_placement._Placement, object):
         """
         sas = self._change_schema(streamsx.topology.schema.CommonSchema.String, 'as_string', name)._layout('AsString')
         sas.oport.operator.sl = _SourceLocation(_source_info(), 'as_string')
-        return sas
+        return sas._add_hints(streamsx._streams._hints.STR_HINTS)
 
     def as_json(self, force_object=True, name=None):
         """
@@ -1930,9 +2205,17 @@ class Stream(_placement._Placement, object):
             Stream: Stream containing the JSON representations of tuples on this stream.
 
         """
-        func = streamsx.topology.runtime._json_force_object if force_object else None
+        force_dict = False
+        if isinstance(self.oport.schema, streamsx.topology.schema.StreamSchema):
+            func = None
+            if self.oport.schema.style != dict:
+                force_dict = True
+        else:
+            func = streamsx.topology.runtime._json_force_object if force_object else None
         saj = self._change_schema(streamsx.topology.schema.CommonSchema.Json, 'as_json', name, func)._layout('AsJson')
         saj.oport.operator.sl = _SourceLocation(_source_info(), 'as_json')
+        if force_dict:
+            saj.oport.operator.params['pyStyle'] = 'dict'
         return saj
 
     def _change_schema(self, schema, action, name=None, func=None):
@@ -1972,7 +2255,7 @@ class View(object):
         >>> view = rands.view()       
         >>> submit(ContextTypes.DISTRIBUTED, topology)
         >>> queue = view.start_data_fetch()
-        >>> for val in iter(queue.get, None):
+        >>> for val in iter(queue.get, 60):
         ...     print(val)
         ...
         0.6527
@@ -2163,6 +2446,7 @@ class Window(object):
     """
     def __init__(self, stream, window_type):
         self.topology = stream.topology
+        self._hints = stream._hints
         self.stream = stream
         self._config = {'type': window_type}
 
@@ -2198,16 +2482,13 @@ class Window(object):
         stateful = _determine_statefulness(function)
 
         # This is based on graph._addOperatorFunction.
-        recurse = None
         if isinstance(function, types.LambdaType) and function.__name__ == "<lambda>" :
             function = streamsx.topology.runtime._Callable1(function, no_context=True)
-            recurse = True
         elif function.__module__ == '__main__':
             # Function/Class defined in main, create a callable wrapping its
             # dill'ed form
             function = streamsx.topology.runtime._Callable1(function,
                 no_context = True if inspect.isroutine(function) else None)
-            recurse = True
          
         if inspect.isroutine(function):
             # callable is a function
@@ -2216,7 +2497,7 @@ class Window(object):
             # callable is a callable class instance
             name = function.__class__.__name__
             # dill format is binary; base64 encode so it is json serializable 
-            dilled_callable = base64.b64encode(dill.dumps(function, recurse=recurse if sys.version_info.major == 2 else None)).decode("ascii")
+            dilled_callable = base64.b64encode(dill.dumps(function, recurse=None)).decode("ascii")
 
         self._config['partitioned'] = True
         if dilled_callable is not None:
@@ -2342,6 +2623,49 @@ class Window(object):
         
             win = s.last(10).trigger(2).partition(key='id')
             moving_averages = win.aggregate(summarize_sensors)
+
+        Example for building a rolling average window aggregation with stream tuples passed as a `named tuple`::
+        
+            from streamsx.topology.topology import Topology
+            from streamsx.topology import context
+            from streamsx.topology.context import submit, ContextTypes, ConfigParams
+            import random
+            import itertools
+            from typing import Iterable, NamedTuple
+
+            class AggregateSchema(NamedTuple):
+                count: int = 0
+                avg: float = 0.0
+                min: int = 0
+                max: int = 0
+
+            class Average:
+                def __call__(self, tuples_in_window) -> AggregateSchema:
+                    values = [tpl.value for tpl in tuples_in_window]
+                    mn = min(values)
+                    mx = max(values)
+                    num_of_tuples = len(tuples_in_window)
+                    average = sum(values) / len(tuples_in_window)
+                    output_event = AggregateSchema(
+                        count = num_of_tuples,
+                        avg = average,
+                        min = mn,
+                        max = mx
+                    )
+                    return output_event
+
+            class NumbersSchema(NamedTuple):
+                value: int = 0
+
+            class Numbers(object):
+                def __call__(self) -> Iterable[NumbersSchema]:
+                    for num in itertools.count(1):
+                        yield {"value": num}
+
+            topo = Topology("Rolling Average")
+            src = topo.source(Numbers())
+            window = src.last(size=10)
+            rolling_average = window.aggregate(Average())
         
 
         .. note:: If a tumbling (:py:meth:`~Stream.batch`) window's stream
@@ -2371,7 +2695,8 @@ class Window(object):
         .. versionchanged:: 1.11 Support for aggregation of streams with structured schemas.
         .. versionchanged:: 1.13 Support for partitioned aggregation.
         """
-        schema = streamsx.topology.schema.CommonSchema.Python
+        hints = streamsx._streams._hints.check_aggregate(function, self)
+        schema = hints.schema if hints else streamsx.topology.schema.CommonSchema.Python
         
         sl = _SourceLocation(_source_info(), "aggregate")
         _name = self.topology.graph._requested_name(name, action="aggregate", func=function)
@@ -2394,8 +2719,8 @@ class Window(object):
         op.addInputPort(outputPort=self.stream.oport, window_config=self._config)
         streamsx.topology.schema.StreamSchema._fnop_style(self.stream.oport.schema, op, 'pyStyle')
         oport = op.addOutputPort(schema=schema, name=_name)
-        op._layout(kind='Aggregate', name=_name, orig_name=name)
-        return Stream(self.topology, oport)._make_placeable()
+        op._layout(kind='Aggregate', name=op.runtime_id, orig_name=name)
+        return Stream(self.topology, oport)._make_placeable()._add_hints(hints)
 
 
 class Sink(_placement._Placement, object):
@@ -2416,3 +2741,4 @@ class Sink(_placement._Placement, object):
 
     def _op(self):
         return self.__op
+
