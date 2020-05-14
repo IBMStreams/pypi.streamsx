@@ -113,6 +113,8 @@ sub main::generate($$) {
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
+   my $nonMatchOutput = $model->getNumberOfOutputPorts() == 2;
+   print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
    print '    bool passed = false;', "\n";
@@ -239,6 +241,14 @@ sub main::generate($$) {
    print '    }', "\n";
    print '    if (passed)', "\n";
    print '         submit(tuple, 0);', "\n";
+   print '    ';
+   if ($nonMatchOutput) {
+   print "\n";
+   print '    else', "\n";
+   print '         submit(tuple, 1);', "\n";
+   print '    ';
+   }
+   print "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";

@@ -234,9 +234,17 @@ Example of using ``__enter__`` to create custom metrics::
 When an instance defines a valid ``__exit__`` method then it will be called with an exception when:
 
  * the instance raises an exception during processing of a tuple
- * a data conversion exception is raised converting a value to an structutured schema tuple or attribute
+ * a data conversion exception is raised converting a value to an structured schema tuple or attribute
 
 If ``__exit__`` returns a true value then the exception is suppressed and processing continues, otherwise the enclosing processing element will be terminated.
+
+.. note::
+    The ``__exit__`` method requires four parameters, whereas the last three parameters are set when exception is raised only:: 
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            if exc_type:
+                print(str(exc_type.__name__))
+                ...
 
 Tuple semantics
 ===============
@@ -371,6 +379,14 @@ class Routing(Enum):
     Each tuple is only sent to a single channel.
     """
     KEY_PARTITIONED=2
+    """
+    Tuples are routed based upon specified partitioning keys.
+    The splitter routes tuples that have the same values for these keys (list of attributes) to the same parallel channel.
+    The keys must exist in the tuple type that is specified for the input stream.
+    Requires a structured stream :py:class:`StreamSchema` or named tuple as input stream.
+    
+    Each tuple is only sent to a single channel.
+    """
     HASH_PARTITIONED=3
     """
     Tuples are routed based upon a hash value so that tuples with the same hash
@@ -1246,7 +1262,7 @@ class Stream(_placement._Placement, object):
         op._layout(kind='ForEach', name=op.runtime_id, orig_name=name)
         return Sink(op)
 
-    def filter(self, func, name=None):
+    def filter(self, func, non_matching=False, name=None):
         """
         Filters tuples from this stream using the supplied callable `func`.
 
@@ -1255,6 +1271,7 @@ class Stream(_placement._Placement, object):
         
         Args:
             func: Filter callable that takes a single parameter for the stream tuple.
+            non_matching(bool): Non-matching tuples are sent to a second optional output stream
             name(str): Name of the stream, defaults to a generated name.
 
         If invoking ``func`` for a stream tuple raises an exception
@@ -1266,8 +1283,14 @@ class Stream(_placement._Placement, object):
         exception is suppressed no tuple is submitted to the filtered
         stream corresponding to the input tuple that caused the exception.
 
+        Example with matching and non matching streams::
+
+            topo = Topology()
+            s = topo.source(['Hello', 'World'])
+            matches, non_matches = s.filter((lambda t : "Wor" in t), non_matching=True)
+
         Returns:
-            Stream: A Stream containing tuples that have not been filtered out. The schema of the returned stream is the same as this stream's schema.
+            Stream: A Stream containing tuples that have not been filtered out. The schema of the returned stream is the same as this stream's schema. Optional second stream is returned for non matching tuples, if parameter non_matching is set to True.
 
         .. rubric:: Type hints
 
@@ -1283,8 +1306,13 @@ class Stream(_placement._Placement, object):
         op.addInputPort(outputPort=self.oport)
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         op._layout(kind='Filter', name=op.runtime_id, orig_name=name)
-        oport = op.addOutputPort(schema=self.oport.schema, name=_name)
-        return Stream(self.topology, oport)._make_placeable()
+        if non_matching:
+            oport = op.addOutputPort(schema=self.oport.schema, name=_name+'_matching')
+            oport_non_matching = op.addOutputPort(schema=self.oport.schema, name=_name+'_non_matching')
+            return Stream(self.topology, oport)._make_placeable(), Stream(self.topology, oport_non_matching)._make_placeable()
+        else:
+            oport = op.addOutputPort(schema=self.oport.schema, name=_name)
+            return Stream(self.topology, oport)._make_placeable()
 
     def split(self, into, func, names=None, name=None):
         """
@@ -1644,7 +1672,7 @@ class Stream(_placement._Placement, object):
         oport = op.addOutputPort(schema=self.oport.schema)
         return Stream(self.topology, oport, other=self)
     
-    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None, name=None):
+    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None, keys=None, name=None):
         """
         Split stream into channels and start a parallel region.
 
@@ -1725,6 +1753,7 @@ class Stream(_placement._Placement, object):
             func: Optional function called when :py:const:`Routing.HASH_PARTITIONED` routing is specified.
                 The function provides an integer value to be used as the hash that determines
                 the tuple channel routing.
+            keys([str]): Optional list of keys required when :py:const:`Routing.KEY_PARTITIONED` routing is specified. Each key represents a tuple attribute.
             name (str): The name to display for the parallel region.
 
         Returns:
@@ -1747,7 +1776,6 @@ class Stream(_placement._Placement, object):
                 oport = op2.addOutputPort(width, schema=self.oport.schema, routing="BROADCAST", name=_name)
             else:
                 oport = op2.addOutputPort(width, schema=self.oport.schema, routing="ROUND_ROBIN", name=_name)
-
                 
             return Stream(self.topology, oport, other=self)
         elif routing == Routing.HASH_PARTITIONED:
@@ -1786,6 +1814,27 @@ class Stream(_placement._Placement, object):
                 parallel_op_port = hrop.addOutputPort(schema=self.oport.schema)
 
             return Stream(self.topology, parallel_op_port, other=self)
+        elif routing == Routing.KEY_PARTITIONED:
+            if (keys is None):        
+                raise NotImplementedError("KEY_PARTITIONED for schema {0} requires a array of keys set in keys parameter.".format(self.oport.schema))
+                
+            if False == isinstance(keys, list):
+                raise TypeError("Invalid keys {0}, list type required.".format(keys))
+
+            if False == isinstance(self.oport.schema, streamsx.topology.schema.StreamSchema):
+                raise TypeError("Routing type KEY_PARTITIONED requires structured schema, use StreamsSchema or named tuple.")
+                
+            for key in keys:
+                if key not in str(self.oport.schema):
+                    raise ValueError("Invalid keys {0} for routing type KEY_PARTITIONED and schema {1}.".format(keys, self.oport.schema))
+            
+            op2 = self.topology.graph.addOperator("$Parallel$", name=_name)
+            if name is not None:
+                op2.config['regionName'] = _name
+            op2.addInputPort(outputPort=self.oport)
+            oport = op2.addOutputPort(oWidth=width, schema=self.oport.schema, partitioned_keys=keys, routing="KEY_PARTITIONED", name=_name)
+                
+            return Stream(self.topology, oport, other=self)
         else :
             raise TypeError("Invalid routing type supplied to the parallel operator")    
 
