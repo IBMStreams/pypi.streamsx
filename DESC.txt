@@ -7,7 +7,7 @@ IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
 streamsx 1.15.0a
 ================
 
-For changes in this release see the `CHANGELOG of the project<https://github.com/IBMStreams/pypi.streamsx/blob/v1_15/streamsx/.toolkit/com.ibm.streamsx.topology/CHANGELOG.md>`_ .
+For changes in this release see the `CHANGELOG of the project. <https://github.com/IBMStreams/pypi.streamsx/blob/v1_15/streamsx/.toolkit/com.ibm.streamsx.topology/CHANGELOG.md>`_
 
 Python Topology API for Streams
 ===============================
