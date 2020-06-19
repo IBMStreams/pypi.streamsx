@@ -1,3 +1,4 @@
+# SPL_CGT_INCLUDE: ../pyspltuple.cgt
 # SPL_CGT_INCLUDE: ../py_pystateful.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_disallow_cr_trigger.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_state.cgt
@@ -78,6 +79,42 @@ sub main::generate($$) {
    }  
    print "\n";
    print "\n";
+    # Generic setup of a variety of variables to
+    # handle conversion of spl tuples to/from Python
+   
+    my $tkdir = $model->getContext()->getToolkitDirectory();
+    my $pydir = $tkdir."/opt/python";
+   
+    require $pydir."/codegen/splpy.pm";
+   
+    # Initialize splpy.pm
+    splpyInit($model);
+   
+    # Currently function operators only have a single input port
+    # and take all the input attributes
+    my $iport = $model->getInputPortAt(0);
+    my $inputAttrs2Py = $iport->getNumberOfAttributes();
+   
+    # determine which input tuple style is being used
+    my $pystyle = $model->getParameterByName("pyStyle");
+    if ($pystyle) {
+        $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
+    } else {
+        $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
+    }
+    # $pystyle is the raw value from the operator parameter
+    # $pystyle_nt is the value that defines how the function is called
+    # (for style namedtuple:xxxx it is tuple)
+    # $pystyle_nt is non-zero if style is namedtuple
+    my $pystyle_fn = $pystyle;
+    my $pystyle_nt = substr($pystyle, 0, 11) eq 'namedtuple:';
+    if ($pystyle_nt) {
+       $pystyle_fn = 'tuple';
+    }
+   print "\n";
+    my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
+   print "\n";
+   print "\n";
    print 'class MY_OPERATOR : public MY_BASE_OPERATOR', "\n";
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print ' , public SPL::StateHandler', "\n";
@@ -97,6 +134,16 @@ sub main::generate($$) {
    print '#endif', "\n";
    print "\n";
    print 'private:', "\n";
+   print '  ';
+     if ($pyoutstyle eq 'dict') {
+     
+   print "\n";
+   print '    void fromPyTupleToSPLTuple(PyObject *pyDict, OPort0Type & otuple);', "\n";
+   print '    void fromPyDictToSPLTuple(PyObject *pyTuple, OPort0Type & otuple);', "\n";
+   print '  ';
+   }
+   print "\n";
+   print '  ', "\n";
    print '    SplpyOp * op() { return funcop_; }', "\n";
    print "\n";
    print '    // Members', "\n";
@@ -104,6 +151,12 @@ sub main::generate($$) {
    print '    SplpyFuncOp *funcop_;', "\n";
    print '    ', "\n";
    print '    PyObject *pyInStyleObj_;', "\n";
+   print '  ';
+   if ($pyoutstyle eq 'dict') {
+   print '    ', "\n";
+   print '	PyObject *pyOutNames_0;', "\n";
+   print '  ';
+   }
    print "\n";
    print '    // Number of output connections when passing by ref', "\n";
    print '    // -1 when cannot pass by ref', "\n";
