@@ -9,6 +9,6 @@ Project would initially support:
     Python Application API (from streamsx.topology)
     Python Rest API (from streamsx.utility)
 
-Project would maintain copies of the files from other IBMStreams projects (or their releases), the master versions would remain in the source projects.
+Project would maintain copies of the files from other IBMStreams projects (or their releases), the main versions would remain in the source projects.
 
 A single PyPi package for IBM Streams Python code is used rather than multiple to simplify setup for Python developers.
