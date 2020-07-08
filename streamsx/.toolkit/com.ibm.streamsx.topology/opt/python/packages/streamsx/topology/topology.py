@@ -929,6 +929,18 @@ class Topology(object):
             s = ...
             s = s.filter(lambda v : v > threshold())
 
+        Submission parameters may be used to specify the degree of parallelism. e.g.::
+
+            stv_channels = topo.create_submission_parameter('num_channels', type_=int)
+        
+            s = topo.source(range(67)).set_parallel(stv_channels)
+            s = s.filter(lambda v : v % stv_channels() == 0)
+            s = s.end_parallel()
+ 
+            jc = JobConfig()
+            jc.submission_parameters['num_channels'] = 3
+            jc.add(cfg)
+
         .. note::
             The parameter (value returned from this method) is only
             supported within a lambda expression or a callable
@@ -1763,7 +1775,7 @@ class Stream(_placement._Placement, object):
         by :py:meth:`set_parallel`.
         
         Args:
-            width (int): Degree of parallelism.
+            width(int|submission parameter created by :py:meth:`Topology.create_submission_parameter`): Degree of parallelism.
             routing(Routing): Denotes what type of tuple routing to use.
             func: Optional function called when :py:const:`Routing.HASH_PARTITIONED` routing is specified.
                 The function provides an integer value to be used as the hash that determines
@@ -1925,7 +1937,7 @@ class Stream(_placement._Placement, object):
         :py:meth:`parallel`.
 
         Args:
-            width: The degree of parallelism for the parallel region.
+            width(int|submission parameter created by :py:meth:`Topology.create_submission_parameter`): The degree of parallelism for the parallel region.
             name(str): Name of the parallel region. Defaults to the name of this stream.
 
         Returns:
@@ -1974,16 +1986,27 @@ class Stream(_placement._Placement, object):
         of the window. With a `timedelta` representing five minutes
         then the window contains any tuples that arrived in the last
         five minutes.
+
+        If `size` is an `submission parameter` created by :py:meth:`Topology.create_submission_parameter` then it is the count of tuples in the window.
+        For specifying the duration of the window with a submission parameter use :py:meth:`~Stream.lastSeconds`.
  
         Args:
-            size: The size of the window, either an `int` to define the
+            size(int|datetime.timedelta|submission parameter created by :py:meth:`Topology.create_submission_parameter`): The size of the window, either an `int` to define the
                 number of tuples or `datetime.timedelta` to define the
-                duration of the window.
+                duration of the window or
+                submission parameter created by :py:meth:`Topology.create_submission_parameter`
+                to define the number of tuples.
 
         Examples::
 
             # Create a window against stream s of the last 100 tuples
             w = s.last(size=100)
+
+        ::
+
+            # Create a window against stream s of the last n tuples specified by submission parameter
+            count = topo.create_submission_parameter('count', 100)
+            w = s.last(size=count)
 
         ::
 
@@ -1999,6 +2022,40 @@ class Stream(_placement._Placement, object):
             win._evict_time(size)
         elif isinstance(size, int):
             win._evict_count(size)
+        elif isinstance(size, streamsx.topology.runtime._SubmissionParam):
+            win._evict_count_stv(size)
+        else:
+            raise ValueError(size)
+        return win
+
+    def lastSeconds(self, size):
+        """ Declares a slding window containing most recent tuples
+        on this stream using a submission parameter created by
+        :py:meth:`Topology.create_submission_parameter`.
+
+        The number of tuples maintained in the window is defined by `size` in seconds.
+ 
+        Args:
+            size(int|submission parameter created by :py:meth:`Topology.create_submission_parameter`): The size of the window in seconds.
+
+        Examples::
+
+            # Create a window against stream s of the last with submission parameter `time` and the default value 10 seconds
+            time = topo.create_submission_parameter('time', 10)
+            w = s.lastSeconds(time)
+
+        ::
+
+            # Create a window with submission parameter `secs` and no default value 
+            time = topo.create_submission_parameter(name='secs', type_=int)
+            w = s.lastSeconds(time)
+
+        Returns:
+            Window: Window of the last (most recent) tuples on this stream.
+        """
+        win = Window(self, 'SLIDING')
+        if isinstance(size, streamsx.topology.runtime._SubmissionParam):
+            win._evict_time_stv(size)
         else:
             raise ValueError(size)
         return win
@@ -2522,6 +2579,15 @@ class Window(object):
     def _evict_count(self, size):
         self._config['evictPolicy'] = 'COUNT'
         self._config['evictConfig'] = size
+
+    def _evict_count_stv(self, size):
+        self._config['evictPolicy'] = 'COUNT'
+        self._config['evictConfig'] = size.spl_json()
+
+    def _evict_time_stv(self, duration):
+        self._config['evictPolicy'] = 'TIME'
+        self._config['evictConfig'] = duration.spl_json()
+        self._config['evictTimeUnit'] = 'SECONDS'
 
     def _evict_time(self, duration):
         self._config['evictPolicy'] = 'TIME'
