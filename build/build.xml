@@ -25,7 +25,7 @@
    <mkdir dir="release"/>
 
    <get src=
-      "https://github.com/IBMStreams/streamsx.topology/releases/download/v1.15.6/streamsx.topology-v1.15-20200709-1205.tgz"
+      "https://github.com/IBMStreams/streamsx.topology/releases/download/v1.15.7/streamsx.topology-v1.15-20200720-1440.tgz"
       dest="release.tgz"/>
    <untar src="release.tgz" dest="release" compression="gzip"/>
 
