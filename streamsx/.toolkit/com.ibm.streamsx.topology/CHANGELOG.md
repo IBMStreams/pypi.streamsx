@@ -1,6 +1,11 @@
 # Changes
 ==========
 
+## v1.15.9
+* [#2522](https://github.com/IBMStreams/streamsx.topology/issues/2522) Build scripts prepared for publishing the release to Maven repository
+* [#2537](https://github.com/IBMStreams/streamsx.topology/issues/2537) TestTopology: Check OS version to skip tests in SPLOperatorsTest.java for RH6
+* [#2533](https://github.com/IBMStreams/streamsx.topology/issues/2533) Automatic creation of edge image name can result in illegal image name
+
 ## v1.15.8
 * [#2529](https://github.com/IBMStreams/streamsx.topology/issues/2529) Provide failure reason if edge image build fails
 * [#2524](https://github.com/IBMStreams/streamsx.topology/issues/2524) JAVA: Resolve issue in keyed window definition and using submission parameter
