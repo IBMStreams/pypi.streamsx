@@ -4,10 +4,10 @@ This is a step in allowing natural use of Streams for a Python developer.
 A project that will be registered with PyPi to allow 'pip install' of Python packages that support Python developers interacting with IBM Streams. 'pip install' is the standard mechanism for Python developers to download code.
 (See http://peterdowns.com/posts/first-time-with-pypi.html)
 
-Project would initially support:
+Project supports:
 
     Python Application API (from streamsx.topology)
-    Python Rest API (from streamsx.utility)
+    Python Rest API (from streamsx.topology)
 
 Project would maintain copies of the files from other IBMStreams projects (or their releases), the main versions would remain in the source projects.
 
