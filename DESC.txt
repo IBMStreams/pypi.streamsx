@@ -1,8 +1,7 @@
 Python APIs for use with Streaming Analytics service on
 IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
 
- * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
- * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
+* `IBM Streams <https://ibmstreams.github.io/>`_
 
 streamsx 1.15.9
 ===============
