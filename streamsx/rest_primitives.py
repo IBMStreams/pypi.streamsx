@@ -14,7 +14,10 @@ Contains classes representing primitive Streams objects, such as
 
 """
 
-__all__ = ['ActiveService', 'ActiveVersion', 'ApplicationBundle', 'ApplicationConfiguration', 'Domain', 'ExportedStream', 'Host', 'ImportedStream', 'Installation', 'Instance', 'Job', 'Metric', 'OperatorConnection', 'OperatorInputPort', 'OperatorOutputPort', 'Operator', 'PEConnection', 'PE', 'PublishedTopic', 'ResourceAllocation', 'Resource', 'ResourceTag', 'RestResource', 'StreamingAnalyticsService', 'Toolkit', 'ViewItem', 'View']
+__all__ = ['ActiveService', 'ActiveVersion', 'ApplicationBundle', 'ApplicationConfiguration', 'BaseImage', 'Domain',
+           'ExportedStream', 'Host', 'ImportedStream', 'Installation', 'Instance', 'Job', 'Metric', 
+           'OperatorConnection', 'OperatorInputPort', 'OperatorOutputPort', 'Operator', 'PEConnection', 'PE',
+           'PublishedTopic', 'ResourceAllocation', 'Resource', 'ResourceTag', 'RestResource', 'StreamingAnalyticsService', 'Toolkit', 'ViewItem', 'View']
 
 import logging
 import requests
@@ -503,6 +506,10 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
         self.token = service_token
         self._auth_expiry_time = time.time() + 19 * 60
 
+        # already observed a 'None' connection_info, avoid KeyError later on
+        if not connection_info:
+            raise RequestException('Unable to retrieve connection details for Streams instance: ' + service_name)
+
         # Convert the external endpoints to use the passed in cluster ip.
         ebe = connection_info['externalBuildEndpoint']
         if ebe.startswith('https:'):
@@ -515,6 +522,22 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
             
         build_url = up.urlunsplit(('https', cluster_ip + ':' + str(ebe_port), ebe_path, None, None))
 
+        # optional build pools endpoint for edge
+        build_pools_url = None
+        try:
+            ebpe = connection_info['externalBuildPoolsEndpoint']
+            if ebpe.startswith('https:'):
+                bpu = up.urlsplit(ebpe)
+                ebpe_port = bpu.port
+                ebpe_path = bpu.path
+            else: # CPD 2.5 switched to path-absolute
+                ebpe_port = cluster_port
+                ebpe_path = ebpe
+
+            build_pools_url = up.urlunsplit(('https', cluster_ip + ':' + str(ebpe_port), ebpe_path, None, None))
+        except KeyError: 
+            pass
+
         ere = connection_info['externalRestEndpoint']
         if ere.startswith('https:'):
             ru = up.urlsplit(ere)
@@ -525,7 +548,25 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
             ere_path = ere
         streams_url = up.urlunsplit(('https', cluster_ip + ':' + str(ere_port), ere_path, None, None))
 
-        cfg = {
+        if build_pools_url:
+            cfg = {
+                'type': 'streams',
+                'connection_info': {
+                    'serviceBuildEndpoint': build_url,
+                    'serviceBuildPoolsEndpoint': build_pools_url,
+                    'serviceRestEndpoint': streams_url},
+                'serviceTokenEndpoint': service_token_url,
+                'service_token': service_token,
+                'service_token_expire': int(self._auth_expiry_time * 1000.0),
+                'service_name': service_name,
+                'cluster_ip': cluster_ip,
+                'cluster_port': cluster_port,
+                'service_id': service_id,
+                'externalClient':True,
+            }
+            return cfg
+        else:
+            cfg = {
                 'type': 'streams',
                 'connection_info': {
                     'serviceBuildEndpoint': build_url,
@@ -538,9 +579,8 @@ class _ICPDExternalAuthHandler(_BearerAuthHandler):
                 'cluster_port': cluster_port,
                 'service_id': service_id,
                 'externalClient':True,
-        }
-
-        return cfg
+            }
+            return cfg
 
 class _JWTAuthHandler(_BearerAuthHandler):
     def __init__(self, security_url, username, password, verify):
@@ -1884,7 +1924,7 @@ class Instance(_ResourceElement):
 
             # Two lines are code injected in a Jupyter notebook by selecting the service instance
             from icpd_core import ipcd_util
-            cfg = icpd_util.get_service_details(name='instanceName')
+            cfg = icpd_util.get_service_details(name='instanceName', instance_type='streams')
 
             instance = Instance.of_service(cfg)
 
@@ -1968,7 +2008,7 @@ class Instance(_ResourceElement):
             verify: SSL verification. Set to ``False`` to disable SSL verification. Defaults to SSL verification being enabled.
 
         Returns:
-            Instance: Connection to Streams instance or ``None`` of insufficient configuration was provided.
+            Instance: Connection to Streams instance or ``None`` if insufficient configuration was provided.
 
         .. versionadded:: 1.13
         """
@@ -3091,3 +3131,63 @@ class Toolkit(_ResourceElement):
             version = dependency_element.find('{http://www.ibm.com/xmlns/prod/streams/spl/common}version').text
             deps.append(Toolkit.Dependency(name, version))
         return deps
+
+
+class _BuildPool(_ResourceElement):
+    """A build pool.
+    
+    Attributes:
+        baseimages(str): optional URL to query the base images
+        buildInactivityTimeout(int): 15,
+        buildProcessingTimeout": 15,
+        buildProcessingTimeoutMaximum": 15,
+        buildProductVersion": "",
+        buildingCount": 0,
+        name(str): The name of the build pool
+        resourceType(str): Identifies the REST resource type, which is *buildPool*
+        resourceWaitTimeout(int):
+        restid(str): The pool identifier
+        sizeMaximum(int):
+        sizeMinimum(int):
+        status(str): 
+        type(str): The type of the build pool. The type can be *application*, or *image*.
+        waitingCount(int)
+
+    Example:
+        >>> from streamsx.build import BuildService
+        >>> build_service = BuildService.of_endpoint()
+        >>> buildpools = build_service._get_builPools()
+        >>> print (buildpools[0].resourceType)
+        buildPool
+
+        .. versionadded:: 1.15
+    """
+    def __init__(self, json_rep, rest_client):
+        super(_BuildPool, self).__init__(json_rep, rest_client)
+
+class BaseImage(_ResourceElement):
+    """A base image used for an Edge image build using the EDGE context type.
+    
+    Attributes:
+        buildPool(str): REST URL of the build pool that contains the image
+        id(str): identifier in the form *registry/prefix/imagename:tag*
+        name(str): the image name
+        prefix(str): the image prefix
+        registry(str): the registry where the image is stored
+        resourceType(str): the REST resource type, which is *image*
+        restid(str): identifier in the form *registry/prefix/imagename:tag*
+        tag(str): the image tag
+    
+    Example:
+        >>> from streamsx.build import BuildService
+        >>> build_service = BuildService.of_endpoint()
+        >>> baseimages = build_service.get_base_images()
+        >>> print(type(baseimages[0]))
+        <class 'streamsx.rest_primitives.BaseImage'>
+        >>> print (baseimages[0].resourceType)
+        image
+
+        .. versionadded:: 1.15
+    """
+    def __init__(self, json_rep, rest_client):
+        super(BaseImage, self).__init__(json_rep, rest_client)

@@ -234,9 +234,17 @@ Example of using ``__enter__`` to create custom metrics::
 When an instance defines a valid ``__exit__`` method then it will be called with an exception when:
 
  * the instance raises an exception during processing of a tuple
- * a data conversion exception is raised converting a value to an structutured schema tuple or attribute
+ * a data conversion exception is raised converting a value to an structured schema tuple or attribute
 
 If ``__exit__`` returns a true value then the exception is suppressed and processing continues, otherwise the enclosing processing element will be terminated.
+
+.. note::
+    The ``__exit__`` method requires four parameters, whereas the last three parameters are set when exception is raised only:: 
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            if exc_type:
+                print(str(exc_type.__name__))
+                ...
 
 Tuple semantics
 ===============
@@ -371,6 +379,14 @@ class Routing(Enum):
     Each tuple is only sent to a single channel.
     """
     KEY_PARTITIONED=2
+    """
+    Tuples are routed based upon specified partitioning keys.
+    The splitter routes tuples that have the same values for these keys (list of attributes) to the same parallel channel.
+    The keys must exist in the tuple type that is specified for the input stream.
+    Requires a structured stream :py:class:`StreamSchema` or named tuple as input stream.
+    
+    Each tuple is only sent to a single channel.
+    """
     HASH_PARTITIONED=3
     """
     Tuples are routed based upon a hash value so that tuples with the same hash
@@ -913,6 +929,18 @@ class Topology(object):
             s = ...
             s = s.filter(lambda v : v > threshold())
 
+        Submission parameters may be used to specify the degree of parallelism. e.g.::
+
+            stv_channels = topo.create_submission_parameter('num_channels', type_=int)
+        
+            s = topo.source(range(67)).set_parallel(stv_channels)
+            s = s.filter(lambda v : v % stv_channels() == 0)
+            s = s.end_parallel()
+ 
+            jc = JobConfig()
+            jc.submission_parameters['num_channels'] = 3
+            jc.add(cfg)
+
         .. note::
             The parameter (value returned from this method) is only
             supported within a lambda expression or a callable
@@ -938,6 +966,7 @@ class Topology(object):
             type_: Type of parameter value when default is not set. Supported values are `str`, `int`, `float` and `bool`.
 
         .. versionadded:: 1.9
+        .. seealso:: :py:meth:`streamsx.ec.get_submission_time_value`
         """
         
         if name in self._submission_parameters:
@@ -1246,7 +1275,7 @@ class Stream(_placement._Placement, object):
         op._layout(kind='ForEach', name=op.runtime_id, orig_name=name)
         return Sink(op)
 
-    def filter(self, func, name=None):
+    def filter(self, func, non_matching=False, name=None):
         """
         Filters tuples from this stream using the supplied callable `func`.
 
@@ -1255,6 +1284,7 @@ class Stream(_placement._Placement, object):
         
         Args:
             func: Filter callable that takes a single parameter for the stream tuple.
+            non_matching(bool): Non-matching tuples are sent to a second optional output stream
             name(str): Name of the stream, defaults to a generated name.
 
         If invoking ``func`` for a stream tuple raises an exception
@@ -1266,8 +1296,14 @@ class Stream(_placement._Placement, object):
         exception is suppressed no tuple is submitted to the filtered
         stream corresponding to the input tuple that caused the exception.
 
+        Example with matching and non matching streams::
+
+            topo = Topology()
+            s = topo.source(['Hello', 'World'])
+            matches, non_matches = s.filter((lambda t : "Wor" in t), non_matching=True)
+
         Returns:
-            Stream: A Stream containing tuples that have not been filtered out. The schema of the returned stream is the same as this stream's schema.
+            Stream: A Stream containing tuples that have not been filtered out. The schema of the returned stream is the same as this stream's schema. Optional second stream is returned for non matching tuples, if parameter non_matching is set to True.
 
         .. rubric:: Type hints
 
@@ -1283,8 +1319,13 @@ class Stream(_placement._Placement, object):
         op.addInputPort(outputPort=self.oport)
         streamsx.topology.schema.StreamSchema._fnop_style(self.oport.schema, op, 'pyStyle')
         op._layout(kind='Filter', name=op.runtime_id, orig_name=name)
-        oport = op.addOutputPort(schema=self.oport.schema, name=_name)
-        return Stream(self.topology, oport)._make_placeable()
+        if non_matching:
+            oport = op.addOutputPort(schema=self.oport.schema, name=_name+'_matching')
+            oport_non_matching = op.addOutputPort(schema=self.oport.schema, name=_name+'_non_matching')
+            return Stream(self.topology, oport)._make_placeable(), Stream(self.topology, oport_non_matching)._make_placeable()
+        else:
+            oport = op.addOutputPort(schema=self.oport.schema, name=_name)
+            return Stream(self.topology, oport)._make_placeable()
 
     def split(self, into, func, names=None, name=None):
         """
@@ -1578,6 +1619,20 @@ class Stream(_placement._Placement, object):
         and mapped stream corresponding to the input tuple
         that caused the exception.
 
+        Example: For a list of dict the ``flat_map`` emits **n** tuples for each input tuple received, with **n** the number of elements in the list::
+            
+            from typing import Iterable, List, NamedTuple
+
+            class SampleSchema(NamedTuple):
+                id: str
+                flag: bool
+
+            def flatten_dict(tpl) -> Iterable[SampleSchema]:
+                return tpl
+
+            # list_stream is a stream of list from dict as Python object, for example [{'id': '0', 'flag':True}]       
+            sample_stream = list_stream.flat_map(flatten_dict) # sample_stream is a named tuple stream of SampleSchema
+
         Returns:
             Stream: A Stream containing flattened and mapped tuples.
         Raises:
@@ -1644,7 +1699,7 @@ class Stream(_placement._Placement, object):
         oport = op.addOutputPort(schema=self.oport.schema)
         return Stream(self.topology, oport, other=self)
     
-    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None, name=None):
+    def parallel(self, width, routing=Routing.ROUND_ROBIN, func=None, keys=None, name=None):
         """
         Split stream into channels and start a parallel region.
 
@@ -1720,11 +1775,12 @@ class Stream(_placement._Placement, object):
         by :py:meth:`set_parallel`.
         
         Args:
-            width (int): Degree of parallelism.
+            width(int|submission parameter created by :py:meth:`Topology.create_submission_parameter`): Degree of parallelism.
             routing(Routing): Denotes what type of tuple routing to use.
             func: Optional function called when :py:const:`Routing.HASH_PARTITIONED` routing is specified.
                 The function provides an integer value to be used as the hash that determines
                 the tuple channel routing.
+            keys([str]): Optional list of keys required when :py:const:`Routing.KEY_PARTITIONED` routing is specified. Each key represents a tuple attribute.
             name (str): The name to display for the parallel region.
 
         Returns:
@@ -1747,7 +1803,6 @@ class Stream(_placement._Placement, object):
                 oport = op2.addOutputPort(width, schema=self.oport.schema, routing="BROADCAST", name=_name)
             else:
                 oport = op2.addOutputPort(width, schema=self.oport.schema, routing="ROUND_ROBIN", name=_name)
-
                 
             return Stream(self.topology, oport, other=self)
         elif routing == Routing.HASH_PARTITIONED:
@@ -1786,6 +1841,27 @@ class Stream(_placement._Placement, object):
                 parallel_op_port = hrop.addOutputPort(schema=self.oport.schema)
 
             return Stream(self.topology, parallel_op_port, other=self)
+        elif routing == Routing.KEY_PARTITIONED:
+            if (keys is None):        
+                raise NotImplementedError("KEY_PARTITIONED for schema {0} requires a array of keys set in keys parameter.".format(self.oport.schema))
+                
+            if False == isinstance(keys, list):
+                raise TypeError("Invalid keys {0}, list type required.".format(keys))
+
+            if False == isinstance(self.oport.schema, streamsx.topology.schema.StreamSchema):
+                raise TypeError("Routing type KEY_PARTITIONED requires structured schema, use StreamsSchema or named tuple.")
+                
+            for key in keys:
+                if key not in str(self.oport.schema):
+                    raise ValueError("Invalid keys {0} for routing type KEY_PARTITIONED and schema {1}.".format(keys, self.oport.schema))
+            
+            op2 = self.topology.graph.addOperator("$Parallel$", name=_name)
+            if name is not None:
+                op2.config['regionName'] = _name
+            op2.addInputPort(outputPort=self.oport)
+            oport = op2.addOutputPort(oWidth=width, schema=self.oport.schema, partitioned_keys=keys, routing="KEY_PARTITIONED", name=_name)
+                
+            return Stream(self.topology, oport, other=self)
         else :
             raise TypeError("Invalid routing type supplied to the parallel operator")    
 
@@ -1861,7 +1937,7 @@ class Stream(_placement._Placement, object):
         :py:meth:`parallel`.
 
         Args:
-            width: The degree of parallelism for the parallel region.
+            width(int|submission parameter created by :py:meth:`Topology.create_submission_parameter`): The degree of parallelism for the parallel region.
             name(str): Name of the parallel region. Defaults to the name of this stream.
 
         Returns:
@@ -1910,16 +1986,27 @@ class Stream(_placement._Placement, object):
         of the window. With a `timedelta` representing five minutes
         then the window contains any tuples that arrived in the last
         five minutes.
+
+        If `size` is an `submission parameter` created by :py:meth:`Topology.create_submission_parameter` then it is the count of tuples in the window.
+        For specifying the duration of the window with a submission parameter use :py:meth:`~Stream.lastSeconds`.
  
         Args:
-            size: The size of the window, either an `int` to define the
+            size(int|datetime.timedelta|submission parameter created by :py:meth:`Topology.create_submission_parameter`): The size of the window, either an `int` to define the
                 number of tuples or `datetime.timedelta` to define the
-                duration of the window.
+                duration of the window or
+                submission parameter created by :py:meth:`Topology.create_submission_parameter`
+                to define the number of tuples.
 
         Examples::
 
             # Create a window against stream s of the last 100 tuples
             w = s.last(size=100)
+
+        ::
+
+            # Create a window against stream s of the last n tuples specified by submission parameter
+            count = topo.create_submission_parameter('count', 100)
+            w = s.last(size=count)
 
         ::
 
@@ -1935,6 +2022,40 @@ class Stream(_placement._Placement, object):
             win._evict_time(size)
         elif isinstance(size, int):
             win._evict_count(size)
+        elif isinstance(size, streamsx.topology.runtime._SubmissionParam):
+            win._evict_count_stv(size)
+        else:
+            raise ValueError(size)
+        return win
+
+    def lastSeconds(self, size):
+        """ Declares a slding window containing most recent tuples
+        on this stream using a submission parameter created by
+        :py:meth:`Topology.create_submission_parameter`.
+
+        The number of tuples maintained in the window is defined by `size` in seconds.
+ 
+        Args:
+            size(submission parameter created by :py:meth:`Topology.create_submission_parameter`): The size of the window in seconds.
+
+        Examples::
+
+            # Create a window against stream s of the last with submission parameter `time` and the default value 10 seconds
+            time = topo.create_submission_parameter('time', 10)
+            w = s.lastSeconds(time)
+
+        ::
+
+            # Create a window with submission parameter `secs` and no default value 
+            time = topo.create_submission_parameter(name='secs', type_=int)
+            w = s.lastSeconds(time)
+
+        Returns:
+            Window: Window of the last (most recent) tuples on this stream.
+        """
+        win = Window(self, 'SLIDING')
+        if isinstance(size, streamsx.topology.runtime._SubmissionParam):
+            win._evict_time_stv(size)
         else:
             raise ValueError(size)
         return win
@@ -1967,6 +2088,8 @@ class Stream(_placement._Placement, object):
         A batch can contain no tuples if no tuples arrived on the stream
         in the defined duration.
 
+        For specifying the duration of the window with a submission parameter use :py:meth:`~Stream.batchSeconds`.
+
         Each tuple on the stream appears only in a single batch.
 
         The number of tuples seen by processing against the
@@ -1983,13 +2106,21 @@ class Stream(_placement._Placement, object):
 
         ::
 
+            # Create a window size specified by submission parameter
+            count = topo.create_submission_parameter('count', 100)
+            w = s.batch(size=count)
+
+        ::
+
             # Create batches against stream s every five minutes
             w = s.batch(size=datetime.timedelta(minutes=5))
 
         Args:
-            size: The size of each batch, either an `int` to define the
+            size(int|datetime.timedelta|submission parameter created by :py:meth:`Topology.create_submission_parameter`): The size of each batch, either an `int` to define the
                 number of tuples or `datetime.timedelta` to define the
-                duration of the batch.
+                duration of the batch or
+                submission parameter created by :py:meth:`Topology.create_submission_parameter`
+                to define the number of tuples.
 
         Returns:
             Window: Window allowing batch processing on this stream.
@@ -2001,6 +2132,40 @@ class Stream(_placement._Placement, object):
             win._evict_time(size)
         elif isinstance(size, int):
             win._evict_count(size)
+        elif isinstance(size, streamsx.topology.runtime._SubmissionParam):
+            win._evict_count_stv(size)
+        else:
+            raise ValueError(size)
+        return win
+
+    def batchSeconds(self, size):
+        """ Declares a tumbling window to support batch processing
+        against this stream using a submission parameter created by
+        :py:meth:`Topology.create_submission_parameter`.
+
+        The number of tuples in the batch is defined by `size` in seconds.
+ 
+        Args:
+            size(submission parameter created by :py:meth:`Topology.create_submission_parameter`): The size of the window in seconds.
+
+        Examples::
+
+            # Create a tumbling window with submission parameter `time` and the default value 10 seconds
+            time = topo.create_submission_parameter('time', 10)
+            w = s.batchSeconds(time)
+
+        ::
+
+            # Create a window with submission parameter `secs` and no default value 
+            time = topo.create_submission_parameter(name='secs', type_=int)
+            w = s.batchSeconds(time)
+
+        Returns:
+            Window: Window allowing batch processing on this stream.
+        """
+        win = Window(self, 'TUMBLING')
+        if isinstance(size, streamsx.topology.runtime._SubmissionParam):
+            win._evict_time_stv(size)
         else:
             raise ValueError(size)
         return win
@@ -2459,6 +2624,15 @@ class Window(object):
         self._config['evictPolicy'] = 'COUNT'
         self._config['evictConfig'] = size
 
+    def _evict_count_stv(self, size):
+        self._config['evictPolicy'] = 'COUNT'
+        self._config['evictConfig'] = size.spl_json()
+
+    def _evict_time_stv(self, duration):
+        self._config['evictPolicy'] = 'TIME'
+        self._config['evictConfig'] = duration.spl_json()
+        self._config['evictTimeUnit'] = 'SECONDS'
+
     def _evict_time(self, duration):
         self._config['evictPolicy'] = 'TIME'
         self._config['evictConfig'] = int(duration.total_seconds() * 1000.0)
@@ -2664,7 +2838,8 @@ class Window(object):
 
             topo = Topology("Rolling Average")
             src = topo.source(Numbers())
-            window = src.last(size=10)
+            # sliding window with eviction count as submission parameter
+            window = src.last(size=topo.create_submission_parameter('count', 10))
             rolling_average = window.aggregate(Average())
         
 

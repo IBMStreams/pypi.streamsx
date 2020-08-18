@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <toolkitModel xmlns="http://www.ibm.com/xmlns/prod/streams/spl/toolkit" productVersion="4.3.0.0" xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:ti="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.2" version="1.14.15">
+  <toolkit name="com.ibm.streamsx.topology" requiredProductVersion="4.2" version="1.15.9">
     <description>
 Toolkit providing mechanisms to build IBM Streams
 applications in other programming languages, with Java, Scala and Python support.
@@ -372,6 +372,7 @@ See the documentation under [namespace:com.ibm.streamsx.topology.python|com.ibm.
           <windowPolicy>NonWindowed</windowPolicy>
         </inputPort>
         <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="false" windowPunctOutputMode="Preserving"/>
+        <outputPort expressionMode="Nonexistent" maxNumPorts="1" minNumPorts="1" optional="true" windowPunctOutputMode="Preserving"/>
       </primitiveOp>
       <primitiveOp language="Cpp" modelUriIndex="32" name="HashAdder" public="true">
         <description>Python functional transform.</description>
