@@ -68,6 +68,11 @@ sub main::generate($$) {
    # Configure Windowing
     my $inputPort = $model->getInputPortAt(0); 
     my $window = $inputPort->getWindow();
+    
+    my $isPunctWindow = ($window->isTumbling() &&
+                         ($window->getEvictionPolicyType() ==
+                          $SPL::Operator::Instance::Window::PUNCT));
+    
     my $windowCppInitializer = SPL::CodeGen::getWindowCppInitializer($window,"PyObject *");
    
     # Select the Python wrapper function
@@ -107,6 +112,11 @@ sub main::generate($$) {
     if ($window->isTumbling()) {
    print "\n";
    print '    window_.registerBeforeWindowFlushHandler(this);', "\n";
+   }
+   print "\n";
+   if($isPunctWindow){
+   print "\n";
+   print '    window_.registerOnEmptyWindowPunctEvent(this);', "\n";
    }
    print "\n";
    print '#if SPLPY_PARTITION_BY_PYTHON == 1', "\n";
@@ -466,14 +476,30 @@ sub main::generate($$) {
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
    print '{', "\n";
+   if($isPunctWindow){
+   print "\n";
+   print '    if(punct==Punctuation::WindowMarker) {', "\n";
+   print '    	window_.insert(punct);', "\n";
+   print '    }', "\n";
+   }
+   print "\n";
     if ($window->isTumbling()) {
    print "\n";
-   print '   // Aggregate the remaining contents if there are some.', "\n";
-   print '   if (punct == Punctuation::FinalMarker)', "\n";
-   print '       aggregateRemaining();', "\n";
+   print '    // Aggregate the remaining contents if there are some.', "\n";
+   print '    if (punct == Punctuation::FinalMarker)', "\n";
+   print '        aggregateRemaining();', "\n";
    }
    print "\n";
    print '}', "\n";
+   print "\n";
+   if($isPunctWindow){
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::onEmptyWindowPunctEvent(WindowEventType::WindowType & window)', "\n";
+   print '{', "\n";
+   print '    submit(Punctuation::WindowMarker, 0);', "\n";
+   print '}', "\n";
+   }
+   print "\n";
    print "\n";
     if ($window->isTumbling()) {
    print "\n";

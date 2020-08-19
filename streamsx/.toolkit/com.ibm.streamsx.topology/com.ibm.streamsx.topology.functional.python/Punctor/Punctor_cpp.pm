@@ -5,7 +5,7 @@
 # SPL_CGT_INCLUDE: ../pyspltuple_constructor.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
-package ForEach_cpp;
+package Punctor_cpp;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
 sub main::generate($$) {
    my ($xml, $signature) = @_;  
@@ -57,11 +57,11 @@ sub main::generate($$) {
    print '#include "splpy_sh.h"', "\n";
    print '#endif', "\n";
    print "\n";
-   print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR():', "\n";
+   print 'MY_OPERATOR_SCOPE::MY_OPERATOR::MY_OPERATOR() :', "\n";
    print '   funcop_(NULL),', "\n";
    print '   pyInStyleObj_(NULL)', "\n";
    print '{', "\n";
-   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, "';
+   print '    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATEFUL, "';
    print $pywrapfunc;
    print '");', "\n";
    print "\n";
@@ -100,12 +100,12 @@ sub main::generate($$) {
    print "\n";
    print 'MY_OPERATOR_SCOPE::MY_OPERATOR::~MY_OPERATOR() ', "\n";
    print '{', "\n";
-   print '  {', "\n";
+   print '    {', "\n";
    print '      SplpyGIL lock;', "\n";
    print '      Py_CLEAR(pyInStyleObj_);', "\n";
-   print '  }', "\n";
+   print '    }', "\n";
    print "\n";
-   print '  delete funcop_;', "\n";
+   print '    delete funcop_;', "\n";
    print '}', "\n";
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::prepareToShutdown() ', "\n";
@@ -113,31 +113,22 @@ sub main::generate($$) {
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
-   my $writePunctuations = $model->getParameterByName("writePunctuations");
-   $writePunctuations = $writePunctuations ?  $writePunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
-   my $processPunctuations = $model->getParameterByName("processPunctuations");
-   $processPunctuations = $processPunctuations ?  $processPunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
-   my $processPunct = $writePunctuations | $processPunctuations;
+   my $beforeParam = $model->getParameterByName("before");
+   my $before = $beforeParam ? $beforeParam->getValueAt(0)->getSPLExpression() eq "true" : 1;
+   my $replaceParam = $model->getParameterByName("replace");
+   my $replace = $replaceParam ? $replaceParam->getValueAt(0)->getSPLExpression() eq "true" : 0;
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
+   print '    bool passed = false;', "\n";
+   print '    {', "\n";
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '         SPL::AutoMutex am(mutex_);', "\n";
    print '#elif SPLPY_CALLABLE_STATEFUL == 1', "\n";
    print '         SPL::AutoPortMutex am(mutex_, *this);', "\n";
-   print '#else', "\n";
-   if ($processPunct) {
-   print "\n";
-   print '    SPL::Mutex mutex_; // processPunct', "\n";
-   } else {
-   print "\n";
-   print '    // processPunct is false', "\n";
-   }
-   print "\n";
    print '#endif', "\n";
-   print "\n";
-   print '    try {', "\n";
-   print '      SplpyGIL lock;', "\n";
+   print '         try {', "\n";
+   print '             SplpyGIL lock;', "\n";
    print "\n";
    # Takes the input SPL tuple and converts it to
    # the arguments needed to be passed to a Python
@@ -236,56 +227,54 @@ sub main::generate($$) {
     } 
    print "\n";
    print "\n";
-   print '      PyObject *ret = pySplProcessTuple(funcop_->callable(), value);', "\n";
+   print '             PyObject *ret = pySplProcessTuple(funcop_->callable(), value);', "\n";
    print "\n";
-   print '      if (ret == NULL) {', "\n";
-   print '        throw SplpyExceptionInfo::pythonError("for_each");', "\n";
-   print '      }', "\n";
+   print '             if (ret == NULL) {', "\n";
+   print '                 throw SplpyExceptionInfo::pythonError("punctor");', "\n";
+   print '             }', "\n";
    print "\n";
-   print '      Py_DECREF(ret);', "\n";
+   print '             passed = PyObject_IsTrue(ret);', "\n";
    print "\n";
-   print '    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
-   print '       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '             Py_DECREF(ret);', "\n";
+   print "\n";
+   print '         } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {', "\n";
+   print '             SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
+   print '             return;', "\n";
+   print '         }', "\n";
    print '    }', "\n";
-   print '}', "\n";
-   my $writeTag = $model->getParameterByName("writeTag");
-   my $useWriteTag = $writeTag ?  1 : 0;
+   print '    ', "\n";
+   print '    ';
+   if (($before) && (!$replace)) {
    print "\n";
-   print "\n";
-   if ($processPunct) {
-   print "\n";
-   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port) {', "\n";
-   print '  ';
-   if ($writePunctuations) {
-   print "\n";
-   print '      ';
-   if ($useWriteTag) {
-   print "\n";
-   print '      std::cout << ';
-   print $writeTag->getValueAt(0)->getSPLExpression();
-   print ' << "Punctuation received: " << punct << std::endl;', "\n";
-   print '      ';
-   }else {
-   print "\n";
-   print '      std::cout << "Punctuation received: " << punct << std::endl;', "\n";
-   print '      ';
+   print '    if (passed) {', "\n";
+   print '         submit (Punctuation::WindowMarker, 0);', "\n";
+   print '    }', "\n";
+   print '    ';
    }
    print "\n";
-   print '  ';
+   print '    ';
+   if ($replace) {
+   print "\n";
+   print '    if (!passed) {', "\n";
+   print '        submit(tuple, 0);', "\n";
+   print '    }', "\n";
+   print '    ';
+   } else {
+   print "\n";
+   print '    submit(tuple, 0);', "\n";
+   print '    ';
    }
    print "\n";
-   print '  ';
-   if ($processPunctuations) {
+   print '    ';
+   if ((!$before) || ($replace)) {
    print "\n";
-   print '      if (punct == Punctuation::WindowMarker) {', "\n";
-   print '         funcop_->punct();', "\n";
-   print '      }', "\n";
-   print '  ';
+   print '    if (passed) {', "\n";
+   print '         submit (Punctuation::WindowMarker, 0);', "\n";
+   print '    }', "\n";
+   print '    ';
    }
    print "\n";
    print '}', "\n";
-   }
-   print "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);
    print "\n";

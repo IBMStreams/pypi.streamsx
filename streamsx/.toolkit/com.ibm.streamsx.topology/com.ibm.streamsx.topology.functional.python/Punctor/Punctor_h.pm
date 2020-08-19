@@ -1,7 +1,8 @@
 # SPL_CGT_INCLUDE: ../py_pystateful.cgt
+# SPL_CGT_INCLUDE: ../../opt/python/codegen/py_disallow_cr_trigger.cgt
 # SPL_CGT_INCLUDE: ../../opt/python/codegen/py_state.cgt
 
-package ForEach_h;
+package Punctor_h;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
 sub main::generate($$) {
    my ($xml, $signature) = @_;  
@@ -56,11 +57,24 @@ sub main::generate($$) {
    SPL::CodeGen::headerPrologue($model);
    print "\n";
    print "\n";
-   my $writePunctuations = $model->getParameterByName("writePunctuations");
-   $writePunctuations = $writePunctuations ?  $writePunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
-   my $processPunctuations = $model->getParameterByName("processPunctuations");
-   $processPunctuations = $processPunctuations ?  $processPunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
-   my $processPunct = $writePunctuations | $processPunctuations;
+    # Python operators generally may be included in a consistent region, and
+    # may be the source operator in a consistent region, but may not be the 
+    # source operator in a consistent-region configured with an operator-driven
+    # trigger.  This is because we currently do not support any way for a python
+    # operator to trigger a consistent region drain cycle.  This file enforces
+    # this rule at compile time, and should be @included in any python operator
+    # unless it is designed to support triggering a consistent region.
+   
+   
+    my $consistentRegionContext = $model->getContext()->getOptionalContext("ConsistentRegion");
+    if ($consistentRegionContext && $consistentRegionContext->isTriggerOperator()) { 
+      # TODO
+      # For topology operators, the source location here is unhelpful, since
+      # it refers to a location in a generated file that the user generally
+      # cannot see.  It would be better to read the @spl_note containing
+      # the original python source location and report that.
+      SPL::CodeGen::exitln("The " . $model->getContext()->getClass() . " operator may not be a trigger operator for a consistent region.", $model->getContext()->getSourceLocation());
+   }  
    print "\n";
    print "\n";
    print 'class MY_OPERATOR : public MY_BASE_OPERATOR', "\n";
@@ -73,11 +87,6 @@ sub main::generate($$) {
    print '  virtual ~MY_OPERATOR(); ', "\n";
    print '  void prepareToShutdown(); ', "\n";
    print '  void process(Tuple const & tuple, uint32_t port);', "\n";
-   if ($processPunct) {
-   print "\n";
-   print '  void process(Punctuation const & punct, uint32_t port);', "\n";
-   }
-   print "\n";
    print "\n";
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '  virtual void checkpoint(SPL::Checkpoint & ckpt);', "\n";
@@ -86,25 +95,16 @@ sub main::generate($$) {
    print '#endif', "\n";
    print "\n";
    print 'private:', "\n";
-   print '  SplpyOp * op() { return funcop_; }', "\n";
-   print '  ', "\n";
-   print '  // Members', "\n";
-   print '  // Control for interaction with Python', "\n";
-   print '  SplpyFuncOp *funcop_;', "\n";
-   print '  ', "\n";
-   print '  PyObject *pyInStyleObj_;', "\n";
+   print '    SplpyOp * op() { return funcop_; }', "\n";
+   print "\n";
+   print '    // Members', "\n";
+   print '    // Control for interaction with Python', "\n";
+   print '    SplpyFuncOp *funcop_;', "\n";
+   print '    ', "\n";
+   print '    PyObject *pyInStyleObj_;', "\n";
    print "\n";
    print '#if SPLPY_CALLABLE_STATEFUL == 1', "\n";
    print '    SPL::Mutex mutex_;', "\n";
-   print '#else', "\n";
-   if ($processPunct) {
-   print "\n";
-   print '    SPL::Mutex mutex_; // processPunct', "\n";
-   } else {
-   print "\n";
-   print '    // processPunct is false', "\n";
-   }
-   print "\n";
    print '#endif', "\n";
    print '}; ', "\n";
    print "\n";
