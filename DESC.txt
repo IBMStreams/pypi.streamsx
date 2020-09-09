@@ -4,8 +4,8 @@ IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
  * `Streaming Analytics service <https://console.ng.bluemix.net/catalog/services/streaming-analytics>`_
  * `IBM Streams developer community <https://developer.ibm.com/streamsdev/>`_
 
-streamsx 1.15.9
-===============
+streamsx 1.15.10
+================
 
 For changes in this release see the `CHANGELOG of the project. <https://github.com/IBMStreams/pypi.streamsx/blob/v1_15/streamsx/.toolkit/com.ibm.streamsx.topology/CHANGELOG.md>`_
 
@@ -15,7 +15,7 @@ Module that allows the definition and execution of streaming
 applications implemented in Python. Applications use Python code to process
 tuples and tuples are Python objects.
 
-See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/v1.15.9/streamsx.topology.html#module-streamsx.topology>`_
+See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/v1.15.10/streamsx.topology.html#module-streamsx.topology>`_
 
 Additional streamsx packages providing adapters and/or analytics
 are `available at pypi.org <https://pypi.org/search/?q=streamsx>`_
@@ -28,7 +28,7 @@ to allow tuple processing using Python in an SPL application.
 SPL (Streams Processing Language) is a domain specific language for streaming
 analytics supported by IBM Streams.
 
-See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/v1.15.9/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
+See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/v1.15.10/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
 
 Streams Python REST API
 =======================
@@ -36,11 +36,11 @@ Streams Python REST API
 Module that allows interaction with an running Streams instance or service
 through HTTPS REST APIs.
 
-See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/v1.15.9/streamsx.rest.html#module-streamsx.rest>`_
+See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/v1.15.10/streamsx.rest.html#module-streamsx.rest>`_
 
 Documentation
 =============
 
-`Full package documentation. <https://streamsxtopology.readthedocs.io/en/v1.15.9>`_
+`Full package documentation. <https://streamsxtopology.readthedocs.io/en/v1.15.10>`_
 
 
