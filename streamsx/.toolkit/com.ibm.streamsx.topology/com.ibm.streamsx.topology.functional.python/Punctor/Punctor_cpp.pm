@@ -184,14 +184,15 @@ sub main::generate($$) {
    print "\n";
    print '  PyObject *value = 0;', "\n";
    print '  {', "\n";
-   print '  SplpyGIL lockdict;', "\n";
-   print '  PyObject * pyDict = PyDict_New();', "\n";
+   print '    SplpyGIL lockdict;', "\n";
+   print '    PyObject * pyDict = PyDict_New();', "\n";
+   print '    // convertAndAddToPythonDictionaryObject', "\n";
         for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
             my $la = $iport->getAttributeAt($i);
-            print convertAndAddToPythonDictionaryObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), 'pyInNames_');
+            print convertAndAddToPythonDictionaryObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), 'pyInNames_', 'pyDict', "    ", $model->getContext()->getOutputDirectory());
         }
    print "\n";
-   print '  value = pyDict;', "\n";
+   print '    value = pyDict;', "\n";
    print '  }', "\n";
     } elsif ($pystyle eq 'tuple' || $pystyle_nt) { 
    print "\n";
@@ -206,23 +207,23 @@ sub main::generate($$) {
    print "\n";
    print '  PyObject *value = 0;', "\n";
    print '  {', "\n";
-   print '  SplpyGIL locktuple;', "\n";
-   print '  PyObject * pyTuple = PyTuple_New(';
+   print '    SplpyGIL locktuple;', "\n";
+   print '    PyObject * pyTuple = PyTuple_New(';
    print $inputAttrs2Py;
    print ');', "\n";
+   print '    // convertAndAddToPythonTupleObject', "\n";
         for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
             my $la = $iport->getAttributeAt($i);
-            print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName());
+            print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), "    ", $model->getContext()->getOutputDirectory());
         }
    print "\n";
     if ($pystyle_nt) { 
    print "\n";
    print '    pyTuple = streamsx::topology::SplpyGeneral::pyCallObject(pyNamedtupleCls_, pyTuple);', "\n";
-   print "\n";
     } 
    print "\n";
    print "\n";
-   print '  value = pyTuple;', "\n";
+   print '    value = pyTuple;', "\n";
    print '  }', "\n";
     } 
    print "\n";
