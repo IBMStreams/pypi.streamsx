@@ -5,7 +5,7 @@
 # SPL_CGT_INCLUDE: ../pyspltuple_constructor.cgt
 # SPL_CGT_INCLUDE: ../pyspltuple2dict.cgt
 
-package Filter_cpp;
+package Punctor_cpp;
 use strict; use Cwd 'realpath';  use File::Basename;  use lib dirname(__FILE__);  use SPL::Operator::Instance::OperatorInstance; use SPL::Operator::Instance::Annotation; use SPL::Operator::Instance::Context; use SPL::Operator::Instance::Expression; use SPL::Operator::Instance::ExpressionTree; use SPL::Operator::Instance::ExpressionTreeEvaluator; use SPL::Operator::Instance::ExpressionTreeVisitor; use SPL::Operator::Instance::ExpressionTreeCppGenVisitor; use SPL::Operator::Instance::InputAttribute; use SPL::Operator::Instance::InputPort; use SPL::Operator::Instance::OutputAttribute; use SPL::Operator::Instance::OutputPort; use SPL::Operator::Instance::Parameter; use SPL::Operator::Instance::StateVariable; use SPL::Operator::Instance::TupleValue; use SPL::Operator::Instance::Window; 
 sub main::generate($$) {
    my ($xml, $signature) = @_;  
@@ -113,7 +113,10 @@ sub main::generate($$) {
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
-   my $nonMatchOutput = $model->getNumberOfOutputPorts() == 2;
+   my $beforeParam = $model->getParameterByName("before");
+   my $before = $beforeParam ? $beforeParam->getValueAt(0)->getSPLExpression() eq "true" : 1;
+   my $replaceParam = $model->getParameterByName("replace");
+   my $replace = $replaceParam ? $replaceParam->getValueAt(0)->getSPLExpression() eq "true" : 0;
    print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
@@ -228,7 +231,7 @@ sub main::generate($$) {
    print '             PyObject *ret = pySplProcessTuple(funcop_->callable(), value);', "\n";
    print "\n";
    print '             if (ret == NULL) {', "\n";
-   print '                 throw SplpyExceptionInfo::pythonError("filter");', "\n";
+   print '                 throw SplpyExceptionInfo::pythonError("punctor");', "\n";
    print '             }', "\n";
    print "\n";
    print '             passed = PyObject_IsTrue(ret);', "\n";
@@ -240,21 +243,38 @@ sub main::generate($$) {
    print '             return;', "\n";
    print '         }', "\n";
    print '    }', "\n";
-   print '    if (passed)', "\n";
-   print '         submit(tuple, 0);', "\n";
+   print '    ', "\n";
    print '    ';
-   if ($nonMatchOutput) {
+   if (($before) && (!$replace)) {
    print "\n";
-   print '    else', "\n";
-   print '         submit(tuple, 1);', "\n";
+   print '    if (passed) {', "\n";
+   print '         submit (Punctuation::WindowMarker, 0);', "\n";
+   print '    }', "\n";
    print '    ';
    }
    print "\n";
-   print '}', "\n";
+   print '    ';
+   if ($replace) {
    print "\n";
-   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port)', "\n";
-   print '{', "\n";
-   print '   forwardWindowPunctuation(punct);', "\n";
+   print '    if (!passed) {', "\n";
+   print '        submit(tuple, 0);', "\n";
+   print '    }', "\n";
+   print '    ';
+   } else {
+   print "\n";
+   print '    submit(tuple, 0);', "\n";
+   print '    ';
+   }
+   print "\n";
+   print '    ';
+   if ((!$before) || ($replace)) {
+   print "\n";
+   print '    if (passed) {', "\n";
+   print '         submit (Punctuation::WindowMarker, 0);', "\n";
+   print '    }', "\n";
+   print '    ';
+   }
+   print "\n";
    print '}', "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);

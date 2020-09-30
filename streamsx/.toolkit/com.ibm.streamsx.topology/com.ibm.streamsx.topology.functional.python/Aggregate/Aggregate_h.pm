@@ -105,6 +105,10 @@ sub main::generate($$) {
    # Configure Windowing
     my $inputPort = $model->getInputPortAt(0); 
     my $window = $inputPort->getWindow();
+    
+    my $isPunctWindow = ($window->isTumbling() &&
+                         ($window->getEvictionPolicyType() ==
+                          $SPL::Operator::Instance::Window::PUNCT));
    
     my $partitionByParam = $model->getParameterByName("pyPartitionBy");
     my @partitionByTypes = SPL::CodeGen::getParameterCppTypes($partitionByParam);
@@ -240,6 +244,10 @@ sub main::generate($$) {
    print '  void process(Tuple const & tuple, uint32_t port);', "\n";
    print '  void process(Punctuation const & punct, uint32_t port);', "\n";
    print "\n";
+   if($isPunctWindow) {
+   print "\n";
+   print '  void onEmptyWindowPunctEvent(WindowEventType::WindowType & window);', "\n";
+   }
    print '  ', "\n";
     if ($window->isSliding()) {
    print "\n";

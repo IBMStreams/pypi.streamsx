@@ -113,12 +113,27 @@ sub main::generate($$) {
    print '    funcop_->prepareToShutdown();', "\n";
    print '}', "\n";
    print "\n";
+   my $writePunctuations = $model->getParameterByName("writePunctuations");
+   $writePunctuations = $writePunctuations ?  $writePunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
+   my $processPunctuations = $model->getParameterByName("processPunctuations");
+   $processPunctuations = $processPunctuations ?  $processPunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
+   my $processPunct = $writePunctuations | $processPunctuations;
+   print "\n";
    print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Tuple const & tuple, uint32_t port)', "\n";
    print '{', "\n";
    print '#if SPLPY_OP_STATE_HANDLER == 1', "\n";
    print '         SPL::AutoMutex am(mutex_);', "\n";
    print '#elif SPLPY_CALLABLE_STATEFUL == 1', "\n";
    print '         SPL::AutoPortMutex am(mutex_, *this);', "\n";
+   print '#else', "\n";
+   if ($processPunct) {
+   print "\n";
+   print '    SPL::Mutex mutex_; // processPunct', "\n";
+   } else {
+   print "\n";
+   print '    // processPunct is false', "\n";
+   }
+   print "\n";
    print '#endif', "\n";
    print "\n";
    print '    try {', "\n";
@@ -178,14 +193,15 @@ sub main::generate($$) {
    print "\n";
    print '  PyObject *value = 0;', "\n";
    print '  {', "\n";
-   print '  SplpyGIL lockdict;', "\n";
-   print '  PyObject * pyDict = PyDict_New();', "\n";
+   print '    SplpyGIL lockdict;', "\n";
+   print '    PyObject * pyDict = PyDict_New();', "\n";
+   print '    // convertAndAddToPythonDictionaryObject', "\n";
         for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
             my $la = $iport->getAttributeAt($i);
-            print convertAndAddToPythonDictionaryObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), 'pyInNames_');
+            print convertAndAddToPythonDictionaryObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), 'pyInNames_', 'pyDict', "    ", $model->getContext()->getOutputDirectory());
         }
    print "\n";
-   print '  value = pyDict;', "\n";
+   print '    value = pyDict;', "\n";
    print '  }', "\n";
     } elsif ($pystyle eq 'tuple' || $pystyle_nt) { 
    print "\n";
@@ -200,23 +216,23 @@ sub main::generate($$) {
    print "\n";
    print '  PyObject *value = 0;', "\n";
    print '  {', "\n";
-   print '  SplpyGIL locktuple;', "\n";
-   print '  PyObject * pyTuple = PyTuple_New(';
+   print '    SplpyGIL locktuple;', "\n";
+   print '    PyObject * pyTuple = PyTuple_New(';
    print $inputAttrs2Py;
    print ');', "\n";
+   print '    // convertAndAddToPythonTupleObject', "\n";
         for (my $i = 0; $i < $inputAttrs2Py; ++$i) {
             my $la = $iport->getAttributeAt($i);
-            print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName());
+            print convertAndAddToPythonTupleObject($iport->getCppTupleName(), $i, $la->getSPLType(), $la->getName(), "    ", $model->getContext()->getOutputDirectory());
         }
    print "\n";
     if ($pystyle_nt) { 
    print "\n";
    print '    pyTuple = streamsx::topology::SplpyGeneral::pyCallObject(pyNamedtupleCls_, pyTuple);', "\n";
-   print "\n";
     } 
    print "\n";
    print "\n";
-   print '  value = pyTuple;', "\n";
+   print '    value = pyTuple;', "\n";
    print '  }', "\n";
     } 
    print "\n";
@@ -233,6 +249,44 @@ sub main::generate($$) {
    print '       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);', "\n";
    print '    }', "\n";
    print '}', "\n";
+   my $writeTag = $model->getParameterByName("writeTag");
+   my $useWriteTag = $writeTag ?  1 : 0;
+   print "\n";
+   print "\n";
+   if ($processPunct) {
+   print "\n";
+   print 'void MY_OPERATOR_SCOPE::MY_OPERATOR::process(Punctuation const & punct, uint32_t port) {', "\n";
+   print '  ';
+   if ($writePunctuations) {
+   print "\n";
+   print '      ';
+   if ($useWriteTag) {
+   print "\n";
+   print '      std::cout << ';
+   print $writeTag->getValueAt(0)->getSPLExpression();
+   print ' << "Punctuation received: " << punct << std::endl;', "\n";
+   print '      ';
+   }else {
+   print "\n";
+   print '      std::cout << "Punctuation received: " << punct << std::endl;', "\n";
+   print '      ';
+   }
+   print "\n";
+   print '  ';
+   }
+   print "\n";
+   print '  ';
+   if ($processPunctuations) {
+   print "\n";
+   print '      if (punct == Punctuation::WindowMarker) {', "\n";
+   print '         funcop_->punct();', "\n";
+   print '      }', "\n";
+   print '  ';
+   }
+   print "\n";
+   print '}', "\n";
+   }
+   print "\n";
    print "\n";
    SPL::CodeGen::implementationEpilogue($model);
    print "\n";
