@@ -3,7 +3,7 @@ IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
 
 * `IBM Streams <https://ibmstreams.github.io/>`_
 
-streamsx 1.17.0
+streamsx 1.17.1
 ===============
 
 For changes in this release see the `CHANGELOG of the project. <https://github.com/IBMStreams/pypi.streamsx/blob/v1_17/streamsx/.toolkit/com.ibm.streamsx.topology/CHANGELOG.md>`_
@@ -14,7 +14,7 @@ Module that allows the definition and execution of streaming
 applications implemented in Python. Applications use Python code to process
 tuples and tuples are Python objects.
 
-See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/v1.17.0/streamsx.topology.html#module-streamsx.topology>`_
+See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/v1.17.1/streamsx.topology.html#module-streamsx.topology>`_
 
 Additional streamsx packages providing adapters and/or analytics
 are `available at pypi.org <https://pypi.org/search/?q=streamsx>`_
@@ -27,7 +27,7 @@ to allow tuple processing using Python in an SPL application.
 SPL (Streams Processing Language) is a domain specific language for streaming
 analytics supported by IBM Streams.
 
-See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/v1.17.0/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
+See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/v1.17.1/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
 
 Streams Python REST API
 =======================
@@ -35,11 +35,11 @@ Streams Python REST API
 Module that allows interaction with an running Streams instance or service
 through HTTPS REST APIs.
 
-See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/v1.17.0/streamsx.rest.html#module-streamsx.rest>`_
+See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/v1.17.1/streamsx.rest.html#module-streamsx.rest>`_
 
 Documentation
 =============
 
-`Full package documentation. <https://streamsxtopology.readthedocs.io/en/v1.17.0>`_
+`Full package documentation. <https://streamsxtopology.readthedocs.io/en/v1.17.1>`_
 
 
