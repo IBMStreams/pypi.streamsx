@@ -1782,6 +1782,80 @@ class Stream(_placement._Placement, object):
         oport = op.addOutputPort(name=_name, schema=schema)
         return Stream(self.topology, oport)._make_placeable()._layout('FlatMap', name=op.runtime_id, orig_name=name)._add_hints(hints)
     
+    def catch_exceptions(self, exception_type:str='streams', tuple_trace:bool=False, stack_trace:bool=False):
+        """ When applied to a primitive operator, exceptions of the specified type that are thrown by the operator while processing a tuple are caught. 
+
+        .. note:: You cannot use this on an operator without input streams.
+
+        Example using default values (tuple trace and stack trace disabled) and catch exceptions thrown by the Python primitive operator calling the ``map()`` transformation. This **map** callable raises a ValueError (*"invalid literal for int() with base 10: 'five'"*) when processing the sixt tuple. With ``catch_exceptions()`` applied the application is able to process all 10 tuples and does not stop processing.::
+
+           from typing import NamedTuple
+           class NumbersSchema(NamedTuple):
+              num: int
+
+           topo = Topology()
+           str_stream = topo.source(['0','1','2','3','4','five','6','7','8','9']).as_string()
+
+           num_stream = str_stream.map(lambda t: {'num': int(t)}, schema=NumbersSchema)
+           num_stream.catch_exceptions()
+
+           num_stream.print()
+
+        Example using the SPL operator Functor and enabled tuple trace::
+
+           topo = Topology()
+           str_stream = topo.source(['0','1','2','3','4','five','6','7','8','9']).as_string()
+
+           f = op.Map('spl.relational::Functor', s, schema='tuple<int64 num>')
+           f.num = f.output('(int64) string')
+           num_stream = f.stream
+           num_stream.catch_exceptions(tuple_trace=True)
+
+           num_stream.print()
+
+        Args:
+            exception_type(str): Indicates the type of exceptions to be caught by the run time environment. Supported options include:
+
+                * ``none``: No exceptions of any type are caught.
+
+                * ``streams``: Only IBM® Streams exceptions are caught. This includes exceptions that are thrown by SPL native functions from the standard toolkit, other exceptions that extend from the C++ SPL::SPLRuntimeException, and exceptions that extend from the Java com.ibm.streams.operator.DataException (extending from java.lang.RuntimeException).
+
+                * ``std``: Both IBM Streams and standard exceptions are caught. For C++, standard exception means std::exception. For Java, standard exception means all checked exceptions that inherit from java.lang.Exception.
+
+                * ``all``: In C++, any thrown exception is caught. For Java, any checked and unchecked exception that inherits from java.lang.Exception is caught.
+
+            tuple_trace(bool): Enables or disables the tracing of tuple data. Tracing of data can be enabled when tuples do not contain sensitive data and the data can show up into PE logs. Tuples are logged to the trace facility with the ERROR trace level.
+            stack_trace(bool): Enables or disables the printout of the stack trace to the Streams trace facility. Stack traces are printed to the Streams trace facility with the trace level ERROR.
+
+        Returns:
+            Stream: Returns this stream.
+
+        .. versionadded:: 2.1
+        """
+        if exception_type is None:
+           raise ValueError("Parameter exception_type must not be None.")
+        else:
+           if exception_type not in {'none', 'all', 'streams', 'std'}:
+              raise ValueError("Invalid value for parameter exception_type (supported options: 'none', 'all', 'streams', 'std').")
+
+        props = {'exception':exception_type}
+
+        if tuple_trace is not None:
+           if tuple_trace:
+              props['tupleTrace'] = 'true'
+           else:
+              props['tupleTrace'] = 'false'
+        if stack_trace is not None:
+           if not stack_trace:
+              props['stackTrace'] = 'false'
+           else:
+              props['stackTrace'] = 'true'
+
+        # create annotation dict
+        annotation = {'type':'catch', 'properties': props}
+        self.oport.operator._annotation(annotation)
+        return self._make_placeable()
+
     def isolate(self):
         """
         Guarantees that the upstream operation will run in a separate processing element from the downstream operation
@@ -2096,6 +2170,72 @@ class Stream(_placement._Placement, object):
         self.oport.operator.consistent(consistent_config)
         return self._make_placeable()
 
+    def set_event_time(self, name, lag=None, minimum_gap=None, resolution=None):
+        """ Emit a stream with event-time values and watermarks. 
+
+        Defines the stream attribute with the parameter `name` that is used as event-time attribute in the event-time graph.
+        An event-time graph starts with this stream and inserts watermarks into the stream from time to time.
+
+        * Event-time connectivity extends only downstream.
+        * The event-time graph ends at a sink or at an operator which does not output the event-time attribute.
+
+        A sample application creating an event_time stream and using a *time-interval* window (:py:func:`streamsx.topology.topology.Stream.time_interval`) is located in the samples directory: `Event-Time-Sample <https://github.com/IBMStreams/streamsx.topology/tree/develop/samples/python/topology/spl/vwap_event_time>`_
+
+        Sample with an attribute named ``ts`` of type ``timestamp`` used as event-time attribute::
+
+           from streamsx.spl.types import Timestamp
+           ts1 = Timestamp(1608196, 235000000, 0)
+           s = topo.source([(1,ts1)])
+
+           # transform to structured schema
+           ts_schema = StreamSchema('tuple<int64 num, timestamp ts>').as_tuple(named=True)
+           s = s.map(lambda x : x, schema=ts_schema, name='event_time_source')
+
+           # add event-time annotation for attribute ts to the "event_time_source"
+           s = s.set_event_time('ts')
+
+        Args:
+            name(str): Name of the event-time attribute.
+            lag(float|submission parameter created by :py:meth:`Topology.create_submission_parameter`): Defines the duration in seconds between the maximum event-time of submitted tuples and the value of the watermark to submit. If it is not specified, the default value is 0.0.
+            minimum_gap(float|submission parameter created by :py:meth:`Topology.create_submission_parameter`): Defines the minimum event-time duration in seconds between subsequent watermarks. If it is not specified, the default value is 0.1 (100 milliseconds).
+            resolution(str): Specifies the resolution of the event-time attribute in: Milliseconds, Microseconds, Nanoseconds. If the event-time attribute is of type SPL timestamp, the default resolution value is nanoseconds. If the event-time attribute is of type int, the default resolution value is milliseconds.
+
+        Returns:
+            Stream: Returns this stream.
+
+        .. versionadded:: 2.1
+        """
+        if name is None:
+           raise ValueError("Attribute name must not be None.")
+        
+        props = {'eventTimeAttribute':name}
+        if lag is not None:
+           if isinstance(lag, streamsx.topology.runtime._SubmissionParam):
+              props['lag'] = lag.spl_json()
+           else:
+              if isinstance(lag, float):
+                 props['lag'] = lag
+              else:
+                 raise TypeError("Float type expected for parameter: lag")
+        if minimum_gap is not None:
+           if isinstance(minimum_gap, streamsx.topology.runtime._SubmissionParam):
+              props['minimumGap'] = minimum_gap.spl_json()
+           else:
+              if isinstance(minimum_gap, float):
+                 props['minimumGap'] = minimum_gap
+              else:
+                 raise TypeError("Float type expected for parameter: minimum_gap")
+        if resolution is not None:
+           if isinstance(resolution, str):
+              props['resolution'] = resolution
+           else:
+              raise TypeError("String type expected for parameter: resolution")
+
+        # create eventtime annotation dict
+        annotation = {'type':'eventTime', 'properties': props}
+        self.oport.operator._annotation(annotation)
+        return self._make_placeable()
+
     def last(self, size=1):
         """ Declares a slding window containing most recent tuples
         on this stream.
@@ -2303,6 +2443,52 @@ class Stream(_placement._Placement, object):
         else:
             raise ValueError(size)
         return win
+
+
+    def time_interval(self, interval_duration, creation_period=None, discard_age=None, interval_offset=None):
+        """ Declares a *time-interval* window and specifies that the window-kind tuples are placed into panes which correspond to equal intervals in the event-time domain.
+
+        A *time-interval* window collects tuples into fixed-duration intervals defined over event time.
+        *Time-interval* windows collect tuples into window panes specified by event-time intervals.
+        A pane includes tuples with an event time greater or equal to the start time of the pane and lower than the end time.
+
+        Find a sample application creating an *event-time* stream (:py:func:`streamsx.topology.topology.Stream.set_event_time`) and using a *time-interval* window in the samples directory: `Event-Time-Sample <https://github.com/IBMStreams/streamsx.topology/tree/develop/samples/python/topology/spl/vwap_event_time>`_
+
+        Args:
+            interval_duration(float): Specifies the required duration between the lower and upper interval endpoints. It must be greater than zero (0.0). The parameter value represents seconds.
+            creation_period(float): Specifies the duration between adjacent intervals. The default value is equal to interval_duration. It must be greater than zero (0.0). The parameter value represents seconds.
+            discard_age(float): Defines the duration between the point in time when a window pane becomes complete and the point in time when the window does not accept late tuples any longer. It must be greater or equal to zero (0.0). The default value is zero (0.0). The parameter value represents seconds.
+            interval_offset(float): Defines a point-in-time value which coincides with an interval start time. Panes partition the event time domain into intervals of the form: ``[N * creation_period + interval_offset, N * creation_period + interval_duration + interval_offset)`` where 0.0 is the Unix Epoch: 1970-01-01T00:00:00Z UTC. The parameter value represents seconds.
+
+        Examples::
+
+            w = s.time_interval(interval_duration=60.0, creation_period=1.0)
+
+        Returns:
+            Window: Event-time window on this stream.
+
+        .. versionadded:: 2.1
+        """
+        win = Window(self, 'TIME_INTERVAL')
+        if interval_duration is None:
+           raise ValueError("Parameter interval_duration must be greater than zero (0.0)")
+        else:
+           if not isinstance(interval_duration, float):
+              raise TypeError("Parameter interval_duration must be float")
+        if creation_period is not None:
+           if not isinstance(creation_period, float):
+              raise TypeError("Parameter creation_period must be float")
+        if discard_age is not None:
+           if not isinstance(discard_age, float):
+              raise TypeError("Parameter discard_age must be float")
+        if interval_offset is not None:
+           if not isinstance(interval_offset, float):
+              raise TypeError("Parameter interval_offset must be float")
+        
+        win._evict_time_interval(interval_duration, creation_period, discard_age, interval_offset)
+
+        return win
+
 
     def union(self, streamSet):
         """
@@ -2737,7 +2923,7 @@ class Window(object):
     A `Window` enables transforms against collection (or window)
     of tuples on a stream rather than per-tuple transforms.
     Windows are created against a stream using :py:meth:`Stream.batch`, :py:meth:`Stream.batchSeconds`
-    or :py:meth:`Stream.last`, :py:meth:`Stream.lastSeconds`.
+    or :py:meth:`Stream.last`, :py:meth:`Stream.lastSeconds` or :py:meth:`Stream.time_interval`.
 
     Supported transforms are:
 
@@ -2770,6 +2956,15 @@ class Window(object):
         wc = Window(self.stream, None)
         wc._config.update(self._config)
         return wc
+
+    def _evict_time_interval(self, interval_duration, creation_period, discard_age, interval_offset):
+        self._config['intervalDuration'] = interval_duration
+        if creation_period is not None:
+           self._config['creationPeriod'] = creation_period
+        if discard_age is not None:
+           self._config['discardAge'] = discard_age
+        if interval_offset is not None:
+           self._config['intervalOffset'] = interval_offset
 
     def _evict_punct(self):
         self._config['evictPolicy'] = 'PUNCTUATION'
@@ -3032,6 +3227,12 @@ class Window(object):
         .. versionchanged:: 1.11 Support for aggregation of streams with structured schemas.
         .. versionchanged:: 1.13 Support for partitioned aggregation.
         """
+
+        if self._config is not None:
+           if 'type' in self._config:
+              if self._config['type'] == 'TIME_INTERVAL':
+                 raise TypeError('Time-interval window is not supported.')
+
         hints = streamsx._streams._hints.check_aggregate(function, self)
         schema = hints.schema if hints else streamsx.topology.schema.CommonSchema.Python
         

@@ -1,6 +1,18 @@
 # Changes
 ==========
 
+## v2.1.0
+* [#2649](https://github.com/IBMStreams/streamsx.topology/issues/2649) Python scripts: Print diagnostic info in verbose mode when spl-python-extract skips python modules
+* [#2646](https://github.com/IBMStreams/streamsx.topology/issues/2646) Python: Support new consumingReads parameter of spl.endpoint::EndpointSink
+* [#2640](https://github.com/IBMStreams/streamsx.topology/issues/2640) Python: Support SPL annotation @catch
+* [#2590](https://github.com/IBMStreams/streamsx.topology/issues/2590) Python: Support definition of event-time streams
+* [#2589](https://github.com/IBMStreams/streamsx.topology/issues/2589) Python: Support definition of TimeInterval windows
+* [#2639](https://github.com/IBMStreams/streamsx.topology/issues/2639) Documentation: Typo in ConsistentRegionConfig example
+
+## v2.0.0
+* [#2627](https://github.com/IBMStreams/streamsx.topology/issues/2627) `streamsx-streamtool lstoolkits` should show the toolkit-ID
+* [#2609](https://github.com/IBMStreams/streamsx.topology/issues/2609) CPD3.5: "invalid platform token" error
+
 ## v1.18.0
 * [#2610](https://github.com/IBMStreams/streamsx.topology/issues/2610) Support Streams job as CP4D service: New classes EndpointSink, EndpointSource in streamsx.service
 * [#2607](https://github.com/IBMStreams/streamsx.topology/issues/2607) Documentation updates in Python API to resolve wrong or missing descriptions
